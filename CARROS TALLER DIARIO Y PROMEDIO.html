@@ -1,0 +1,613 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Dashboard Carros Taller</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js" defer></script>
+    <style>
+        :root {
+            --rojo: #C10230;
+            --gris-claro: #F4F4F4;
+            --sidebar-w: 220px;
+            --sidebar-bg: #333F48;
+            --sidebar-hover: #3e4d58;
+            --sidebar-group: #263038;
+            --sidebar-txt: #cccccc;
+        }
+
+        * { box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Tahoma, sans-serif;
+            background: var(--gris-claro);
+            margin: 0; padding: 0;
+            display: flex; flex-direction: column; min-height: 100vh;
+        }
+
+        /* ── Cabecera ── */
+        .header-bar {
+            display: flex; align-items: stretch;
+            position: sticky; top: 0; z-index: 100;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+        }
+        .header-logo {
+            width: var(--sidebar-w);
+            background: #FEFEFE;
+            display: flex; align-items: center; justify-content: center;
+            padding: 10px 16px; flex-shrink: 0;
+        }
+        .header-logo img { height: 42px; object-fit: contain; width: 100%; }
+        .header-title {
+            flex: 1; background: #E4002B; color: white;
+            display: flex; align-items: center; justify-content: center;
+            padding: 14px 24px;
+        }
+        .header-title h2 { margin: 0; font-size: 16px; letter-spacing: 0.5px; }
+
+        /* ── Layout ── */
+        .app-body { display: flex; flex: 1; }
+
+        /* ── Sidebar ── */
+        .sidebar {
+            width: var(--sidebar-w);
+            background: var(--sidebar-bg);
+            min-height: calc(100vh - 52px);
+            flex-shrink: 0; overflow-y: auto;
+        }
+        .nav-group { border-bottom: 1px solid #3a4a55; }
+        .nav-group-header {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 13px 16px; cursor: pointer; color: #ffffff;
+            font-size: 11px; font-weight: 700;
+            text-transform: uppercase; letter-spacing: 0.5px;
+            background: var(--sidebar-group);
+            user-select: none; transition: background 0.15s;
+        }
+        .nav-group-header:hover { background: #3a4a55; }
+        .nav-group-header .arrow { font-size: 9px; transition: transform 0.2s; flex-shrink: 0; margin-left: 6px; }
+        .nav-group-header.open .arrow { transform: rotate(90deg); }
+        .nav-group-header.open { color: #E4002B; }
+        .nav-children { display: none; }
+        .nav-children.open { display: block; }
+        .tab-btn {
+            display: block; width: 100%;
+            padding: 10px 16px 10px 22px;
+            cursor: pointer; border: none;
+            border-left: 3px solid transparent;
+            background: transparent; color: var(--sidebar-txt);
+            font-size: 10.5px; font-weight: 600;
+            text-align: left; line-height: 1.4;
+            transition: background 0.15s, color 0.15s, border-color 0.15s;
+        }
+        .tab-btn:hover { background: var(--sidebar-hover); color: #fff; }
+        .tab-btn.active {
+            background: rgba(193,2,48,0.18) !important;
+            color: #fff !important;
+            border-left-color: var(--rojo) !important;
+        }
+
+        /* ── Contenido ── */
+        .content-area { flex: 1; padding: 24px; overflow-x: hidden; }
+        .card {
+            background: white; padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.12);
+        }
+
+        /* ── Filtros ── */
+        .filters-wrap {
+            background: #f9f9f9; padding: 7px;
+            border-radius: 8px; margin-bottom: 10px;
+            border: 1px solid #eee;
+            display: flex; flex-direction: column; gap: 5px;
+        }
+        .filters-row { display: flex; gap: 7px; flex-wrap: wrap; align-items: flex-end; }
+        .filters-row + .filters-row { padding-top: 5px; border-top: 1px solid #e0e0e0; }
+        .f-item { display: flex; flex-direction: row; align-items: center; gap: 4px; position: relative; }
+        .f-item label { font-size: 8px; font-weight: bold; margin-bottom: 0; color: #666; white-space: nowrap; }
+
+        /* Multiselect dropdowns */
+        .multiselect {
+            padding: 1px 5px; border-radius: 3px; border: 1px solid #ccc;
+            font-size: 9px; height: 20px; cursor: pointer;
+            background: white; min-width: 90px; max-width: 140px;
+            overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+        }
+        .dropdown-content {
+            display: none; position: absolute; top: 100%; left: 0;
+            background: white; border: 1px solid #ccc; z-index: 200;
+            max-height: 180px; overflow-y: auto;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.12); padding: 4px;
+            min-width: 130px; border-radius: 3px;
+        }
+        .dropdown-content label {
+            display: flex; align-items: center; gap: 6px;
+            padding: 4px 5px; cursor: pointer;
+            font-weight: normal; font-size: 10px; color: #333;
+            white-space: nowrap;
+        }
+        .dropdown-content.open { display: block; }
+
+        /* Date inputs */
+        input[type="date"] {
+            padding: 1px 3px; border-radius: 3px; border: 1px solid #ccc;
+            font-size: 9px; height: 20px;
+        }
+
+        /* Botones grupo promedio */
+        .btn-group {
+            padding: 2px 8px; border: 1px solid #555;
+            background: white; cursor: pointer; border-radius: 3px;
+            font-size: 9px; font-weight: 600; height: 20px;
+        }
+        .btn-group.active { background: #333F48; color: white; border-color: #333F48; }
+
+        /* Botón limpiar */
+        .btn-clear {
+            background: var(--rojo); color: white; border: none;
+            padding: 2px 10px; cursor: pointer; border-radius: 3px;
+            font-size: 9px; font-weight: bold; height: 20px;
+        }
+
+        /* ── Gráfica ── */
+        .chart-container { height: 490px; position: relative; margin-top: 10px; }
+
+        /* ── Upload ── */
+        #uploadArea {
+            text-align: center; padding: 40px;
+            border: 2px dashed #E4002B; border-radius: 8px;
+        }
+        #uploadArea p { color: #666; font-size: 13px; }
+    </style>
+</head>
+<body>
+
+<!-- ── Cabecera ── -->
+<div class="header-bar">
+    <div class="header-logo">
+        <img src="data:image/png;base64,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QZcSew5V0kVqrRVXc9BoHEVfRJTlRhGXNjOc93hhooW/Z1rhj+B2lrrxf5dy51Jsl2iVRb6PSte0Hte0MHzIV5kVj1OPieol6Sr1r2aMV9fyRRu26DumitO15vlNHBX1k4PC14cRG0cgSPEuKldEWVCChHlR4TUb+rqNzO5rfql4beAREUjCOt1OLgdOXIWmMSXA0sgpmlwaDJwnh5nq54VLq/ZHtFpZH8elq14H1osPHyKvGis1aCq4yz0ugcT3GiRnGjCMubGc5z0+DKFjZ3rgv4Bpa68X+Xd/RdlRbINo1W9rWaXrIwfrS8LAPiVeJFZVnHxPRT9JV617NGK+r/dGi7C9JVWjNnlLargxsdc+WSepa1wcA5xwBkf4Q1b0iLLjFRWEeBvLqpeV53FT9Um2/mERFUxgiIgCIiAIiIDKLGUygMosZTKAFERAEREAREQBERAEREAREQBERAEREAREQBERAEREAREQBERAEREAREQBERAEREAREQBERAEREAREQBERAEREAREQBERAEREAREQBERAEREAREQBERAEREAREQBERAEREAREQBERAEREAREQBERAEREAREQBERAEREAREQBERAEREAREQBERAEREAREQBERAEREAREQBERAEREAREQBERAEREAREQBERAEREAREQBERAEREAREQBERAEREAREQBERAEREAREQBERAEREAREQBERAEREAREQBERAEREAREQBERAEREAREQBERAEREAREQBERAEREAREQBERAEREAREQBERAEREAREQBERAEREAREQBERAEREAREQBERAEREAREQBERAEREAREQBERAEREAREQBERAf/9k=" alt="Senda Citi">
+    </div>
+    <div class="header-title">
+        <h2>DASHBOARD HISTORIAL DIARIO CARROS TALLER</h2>
+    </div>
+</div>
+
+<div class="app-body">
+
+    <!-- ── Sidebar ── -->
+    <nav class="sidebar">
+        <div class="nav-group" id="group-dash">
+            <div class="nav-group-header open" onclick="toggleGroup('group-dash')">
+                <span>Carros Taller</span>
+                <span class="arrow">&#9654;</span>
+            </div>
+            <div class="nav-children open" id="children-group-dash">
+                <button id="t1" class="tab-btn active" onclick="changeDash(1)">Cantidad Diaria</button>
+                <button id="t2" class="tab-btn"        onclick="changeDash(2)">Promedio</button>
+            </div>
+        </div>
+    </nav>
+
+    <!-- ── Contenido ── -->
+    <div class="content-area">
+        <div class="card">
+
+            <!-- Área de carga -->
+            <div id="uploadArea" id="loader">
+                <p>Cargue el archivo Excel para activar las gráficas.</p>
+                <input type="file" id="fileInput" accept=".xlsx">
+            </div>
+
+            <div id="mainUI" style="display:none;">
+
+                <!-- Filtros -->
+                <div class="filters-wrap">
+
+                    <!-- Fila 1: Promedio por (solo D2) + AÑO · MES · SEMANA · Fechas -->
+                    <div class="filters-row">
+                        <div id="row-promedio" class="f-item" style="display:none;">
+                            <label>PROMEDIO POR:</label>
+                            <button class="btn-group" id="gAÑO"    onclick="setGroup('AÑO')">AÑO</button>
+                            <button class="btn-group active" id="gMES" onclick="setGroup('MES')">MES</button>
+                            <button class="btn-group" id="gSEMANA" onclick="setGroup('SEMANA')">SEM</button>
+                        </div>
+                        <div class="f-item">
+                            <label>AÑO</label>
+                            <div class="multiselect" id="msAÑO">Todos...</div>
+                            <div class="dropdown-content" id="optsAÑO"></div>
+                        </div>
+                        <div class="f-item">
+                            <label>MES</label>
+                            <div class="multiselect" id="msMES">Todos...</div>
+                            <div class="dropdown-content" id="optsMES"></div>
+                        </div>
+                        <div class="f-item">
+                            <label>SEMANA</label>
+                            <div class="multiselect" id="msSEMANA">Todos...</div>
+                            <div class="dropdown-content" id="optsSEMANA"></div>
+                        </div>
+                        <div id="date-range-ui" class="f-item" style="display:flex; gap:7px;">
+                            <div class="f-item"><label>FECHA INICIO</label><input type="date" id="dStart" onchange="handleFilterChange()"></div>
+                            <div class="f-item"><label>FECHA FIN</label><input type="date" id="dEnd" onchange="handleFilterChange()"></div>
+                        </div>
+                    </div>
+
+                    <!-- Fila 2: ZONA · DIVISIÓN · TIPO · Limpiar -->
+                    <div class="filters-row">
+                        <div class="f-item">
+                            <label>ZONA</label>
+                            <div class="multiselect" id="msZONA">Todos...</div>
+                            <div class="dropdown-content" id="optsZONA"></div>
+                        </div>
+                        <div class="f-item">
+                            <label>DIVISIÓN</label>
+                            <div class="multiselect" id="msDIVISION">Todos...</div>
+                            <div class="dropdown-content" id="optsDIVISION"></div>
+                        </div>
+                        <div class="f-item">
+                            <label>TIPO</label>
+                            <div class="multiselect" id="msTIPO">Todos...</div>
+                            <div class="dropdown-content" id="optsTIPO"></div>
+                        </div>
+                        <button class="btn-clear" onclick="resetAll()">LIMPIAR FILTROS</button>
+                    </div>
+
+                </div>
+
+                <!-- Gráfica -->
+                <div class="chart-container">
+                    <canvas id="myChart"></canvas>
+                </div>
+
+            </div><!-- /mainUI -->
+        </div><!-- /card -->
+    </div><!-- /content-area -->
+</div><!-- /app-body -->
+
+<script>
+function toggleGroup(id) {
+    const header = document.querySelector(`#${id} .nav-group-header`) || document.querySelector(`[onclick="toggleGroup('${id}')"]`);
+    const children = document.getElementById('children-' + id);
+    if (!header || !children) return;
+    header.classList.toggle('open');
+    children.classList.toggle('open');
+}
+
+let rawData = [];
+let myChart = null;
+let currentDash = 1;
+let groupMode = 'MES';
+
+let filtersD1 = { AÑO:[], MES:[], SEMANA:[], ZONA:[], DIVISION:[], TIPO:[], sd:'', ed:'' };
+let filtersD2 = { AÑO:[], MES:[], SEMANA:[], ZONA:[], DIVISION:[], TIPO:[], sd:'', ed:'' };
+
+const CATEGORIES = ['0-5', '6-30', '31-60', '61-100', '.+100'];
+const COLORS = {
+    '0-5':   { bg: '#00B050', tx: '#FFFFFF' },
+    '6-30':  { bg: '#00B0F0', tx: '#FFFFFF' },
+    '31-60': { bg: '#FFFF00', tx: '#000000' },
+    '61-100':{ bg: '#FFC000', tx: '#FFFFFF' },
+    '.+100': { bg: '#FF0000', tx: '#FFFFFF' }
+};
+const MESES_ORDEN = ["ENERO","FEBRERO","MARZO","ABRIL","MAYO","JUNIO","JULIO","AGOSTO","SEPTIEMBRE","OCTUBRE","NOVIEMBRE","DICIEMBRE"];
+
+document.addEventListener('click', (e) => {
+    const clickedInside = e.target.closest('.f-item');
+    document.querySelectorAll('.dropdown-content').forEach(d => {
+        if (!clickedInside || !clickedInside.contains(d)) d.classList.remove('open');
+    });
+});
+
+document.getElementById('fileInput').onchange = (e) => {
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+        const wb = XLSX.read(ev.target.result, {type: 'array', cellDates: true});
+        const data = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
+        rawData = data.map(r => {
+            let n = {};
+            for(let k in r) n[k.trim().toUpperCase()] = r[k];
+            return n;
+        });
+        document.getElementById('mainUI').style.display = 'block';
+        document.getElementById('uploadArea').style.display = 'none';
+        initDates();
+        buildFilters();
+        render();
+        document.querySelectorAll('.multiselect').forEach(ms => {
+            ms.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const dd = ms.nextElementSibling;
+                const wasOpen = dd.classList.contains('open');
+                document.querySelectorAll('.dropdown-content').forEach(d => d.classList.remove('open'));
+                if (!wasOpen) dd.classList.add('open');
+            });
+        });
+    };
+    reader.readAsArrayBuffer(e.target.files[0]);
+};
+
+function initDates() {
+    const dates = rawData.map(d => new Date(d.FECHA)).filter(d => !isNaN(d)).sort((a,b) => a-b);
+    if(dates.length > 0) {
+        const last = dates[dates.length-1].toISOString().split('T')[0];
+        const firstDate = new Date(dates[dates.length-1]);
+        firstDate.setDate(firstDate.getDate() - 30);
+        filtersD1.sd = filtersD2.sd = firstDate.toISOString().split('T')[0];
+        filtersD1.ed = filtersD2.ed = last;
+        updateUIFilters();
+    }
+}
+
+function buildFilters() {
+    ['AÑO','MES','SEMANA','ZONA','DIVISION','TIPO'].forEach(field => {
+        let opts = [...new Set(rawData.map(d => d[field]))].filter(v => v);
+        if(field === 'MES') opts.sort((a,b) => MESES_ORDEN.indexOf(a) - MESES_ORDEN.indexOf(b));
+        else if(field === 'SEMANA' || field === 'AÑO') opts.sort((a,b) => Number(a)-Number(b));
+        document.getElementById('opts'+field).innerHTML =
+            opts.map(o => `<label><input type="checkbox" value="${o}" onchange="handleFilterChange('${field}')"> ${o}</label>`).join('');
+    });
+}
+
+function updateUIFilters() {
+    let f = (currentDash === 1) ? filtersD1 : filtersD2;
+    document.getElementById('dStart').value = f.sd;
+    document.getElementById('dEnd').value   = f.ed;
+    ['AÑO','MES','SEMANA','ZONA','DIVISION','TIPO'].forEach(field => {
+        document.querySelectorAll(`#opts${field} input`).forEach(cb => { cb.checked = f[field].includes(String(cb.value)); });
+        document.getElementById('ms'+field).innerText = f[field].length > 0 ? f[field].join(', ') : 'Todos...';
+    });
+}
+
+function handleFilterChange(field) {
+    let f = (currentDash === 1) ? filtersD1 : filtersD2;
+    if(field) {
+        f[field] = Array.from(document.querySelectorAll(`#opts${field} input:checked`)).map(i => i.value);
+        document.getElementById('ms'+field).innerText = f[field].length > 0 ? f[field].join(', ') : 'Todos...';
+    }
+    f.sd = document.getElementById('dStart').value;
+    f.ed = document.getElementById('dEnd').value;
+
+    // Si se cambia el filtro AÑO en D1, ajustar fechas al rango del año seleccionado
+    if (field === 'AÑO' && currentDash === 1) {
+        if (f.AÑO.length > 0) {
+            const años = f.AÑO.map(Number).sort((a,b) => a-b);
+            f.sd = `${años[0]}-01-01`;
+            f.ed = `${años[años.length-1]}-12-31`;
+        } else {
+            // Sin año seleccionado, volver al rango por defecto (últimos 30 días)
+            const dates = rawData.map(d => new Date(d.FECHA)).filter(d => !isNaN(d)).sort((a,b) => a-b);
+            if (dates.length > 0) {
+                const last = dates[dates.length-1];
+                const first = new Date(last); first.setDate(first.getDate() - 30);
+                f.sd = first.toISOString().split('T')[0];
+                f.ed = last.toISOString().split('T')[0];
+            }
+        }
+        document.getElementById('dStart').value = f.sd;
+        document.getElementById('dEnd').value   = f.ed;
+    }
+
+    render();
+}
+
+function render() {
+    let f = (currentDash === 1) ? filtersD1 : filtersD2;
+
+    // Calcular el año base UNA sola vez: el máximo año presente en los datos según filtros activos
+    const todosLosAnios = rawData
+        .filter(d => {
+            if (f.AÑO.length > 0 && !f.AÑO.includes(String(d.AÑO))) return false;
+            if (currentDash === 1 && f.sd && f.ed) {
+                const dt = new Date(d.FECHA);
+                if (dt < new Date(f.sd + "T00:00:00") || dt > new Date(f.ed + "T23:59:59")) return false;
+            }
+            return true;
+        })
+        .map(d => Number(d.AÑO))
+        .filter(y => y > 1900);
+    const anioBase = todosLosAnios.length > 0
+        ? Math.max(...todosLosAnios)
+        : Math.max(...rawData.map(d => Number(d.AÑO)).filter(y => y > 1900));
+    const targetYear = anioBase - 1;
+
+    const getAgrupado = (isPrev) => {
+        let filtrados = rawData.filter(d => {
+            if (isPrev) {
+                // Estrictamente solo el año anterior inmediato
+                if (Number(d.AÑO) !== targetYear) return false;
+                if (currentDash === 1) {
+                    const dt = new Date(d.FECHA);
+                    const sd = new Date(f.sd + "T00:00:00"); sd.setFullYear(sd.getFullYear() - 1);
+                    const ed = new Date(f.ed + "T23:59:59"); ed.setFullYear(ed.getFullYear() - 1);
+                    if (dt < sd || dt > ed) return false;
+                } else {
+                    if (f.MES.length > 0 && !f.MES.includes(String(d.MES))) return false;
+                    if (f.SEMANA.length > 0 && !f.SEMANA.includes(String(d.SEMANA))) return false;
+                }
+            } else {
+                // Estrictamente solo el año base
+                if (Number(d.AÑO) !== anioBase) return false;
+                if (currentDash === 1) {
+                    const dt = new Date(d.FECHA);
+                    const sd = new Date(f.sd + "T00:00:00");
+                    const ed = new Date(f.ed + "T23:59:59");
+                    if (dt < sd || dt > ed) return false;
+                }
+            }
+            return (f.MES.length === 0 || isPrev || f.MES.includes(String(d.MES))) &&
+                   (f.SEMANA.length === 0 || isPrev || f.SEMANA.includes(String(d.SEMANA))) &&
+                   (f.ZONA.length === 0 || f.ZONA.includes(String(d.ZONA))) &&
+                   (f.DIVISION.length === 0 || f.DIVISION.includes(String(d.DIVISION))) &&
+                   (f.TIPO.length === 0 || f.TIPO.includes(String(d.TIPO)));
+        });
+
+        let mapa = {};
+        filtrados.forEach(d => {
+            let dt = new Date(d.FECHA);
+            if(isPrev) dt.setFullYear(dt.getFullYear() + 1);
+            let key = (currentDash === 1) ? dt.toLocaleDateString() : d[groupMode];
+            if(!mapa[key]) {
+                mapa[key] = { total: 0, metaSum: 0, metaCount: 0, diasUnicos: new Set() };
+                CATEGORIES.forEach(c => mapa[key][c] = 0);
+            }
+            mapa[key].diasUnicos.add(dt.toISOString().split('T')[0]);
+            // META según ZONA seleccionada: solo LOCAL → META LOCAL, solo FORANEA → META FORANEA, resto → META TOTAL
+            let colMeta = 'META TOTAL';
+            if (f.ZONA.length === 1) {
+                const z = f.ZONA[0].toUpperCase();
+                if (z === 'LOCAL')   colMeta = 'META LOCAL';
+                else if (z === 'FORANEA') colMeta = 'META FORANEA';
+            }
+            mapa[key].metaSum += Number(d[colMeta] || 0);
+            mapa[key].metaCount++;
+            CATEGORIES.forEach(c => {
+                let v = Number(d[c] || 0);
+                mapa[key][c] += v;
+                mapa[key].total += v;
+            });
+        });
+        return mapa;
+    };
+
+    const actualMap = getAgrupado(false);
+    const prevMap   = getAgrupado(true);
+
+    let labels = Object.keys(actualMap).sort((a,b) => {
+        if(currentDash === 1) {
+            const [da,ma,aa]=a.split('/'); const [db,mb,ab]=b.split('/');
+            return new Date(aa,ma-1,da) - new Date(ab,mb-1,db);
+        }
+        if(groupMode === 'MES') return MESES_ORDEN.indexOf(a) - MESES_ORDEN.indexOf(b);
+        return Number(a) - Number(b);
+    });
+
+    const datasets = [];
+
+    datasets.push({
+        label: 'Meta', type: 'line',
+        data: labels.map(l => {
+            const node = actualMap[l];
+            return node.metaCount > 0 ? Math.round(node.metaSum / node.metaCount) : 0;
+        }),
+        borderColor: '#0071C1', borderWidth: 3, pointRadius: 0, fill: false, order: 0
+    });
+
+    datasets.push({
+        label: 'Año Anterior', type: 'line',
+        data: labels.map(l => {
+            if(!prevMap[l]) return 0;
+            let n = prevMap[l].diasUnicos.size || 1;
+            return Math.round((currentDash === 1) ? prevMap[l].total : (prevMap[l].total / n));
+        }),
+        yAxisID: 'ySombra',
+        fill: true, backgroundColor: 'rgba(180,180,180,0.4)',
+        borderColor: 'transparent', borderWidth: 0, pointRadius: 0, order: 2
+    });
+
+    CATEGORIES.forEach(c => {
+        datasets.push({
+            label: c, type: 'bar',
+            data: labels.map(l => {
+                if(!actualMap[l]) return 0;
+                let n = actualMap[l].diasUnicos.size || 1;
+                return Math.round((currentDash === 1) ? actualMap[l][c] : (actualMap[l][c] / n));
+            }),
+            backgroundColor: COLORS[c].bg, stack: 'stack1', order: 1
+        });
+    });
+
+    // Calcular el máximo global (barras apiladas + sombra) para fijar el eje Y
+    let yMax = 0;
+    labels.forEach(l => {
+        const a = actualMap[l];
+        if (a) {
+            const stackVal = currentDash === 1 ? a.total : Math.round(a.total / (a.diasUnicos.size || 1));
+            if (stackVal > yMax) yMax = stackVal;
+        }
+        const p = prevMap[l];
+        if (p) {
+            const sombra = currentDash === 1 ? p.total : Math.round(p.total / (p.diasUnicos.size || 1));
+            if (sombra > yMax) yMax = sombra;
+        }
+    });
+    // Añadir 15% de margen para que las etiquetas no queden pegadas al borde
+    const yAxisMax = Math.ceil(yMax * 1.15) || 10;
+
+    if(myChart) myChart.destroy();
+    myChart = new Chart(document.getElementById('myChart'), {
+        data: { labels, datasets },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            scales: {
+                x: { stacked: true, ticks: { minRotation: currentDash === 1 ? 90 : 0 }, grid: { display: false } },
+                y: { stacked: true, grid: { display: false }, max: yAxisMax, beginAtZero: true },
+                ySombra: {
+                    display: false,
+                    stacked: false,
+                    beginAtZero: true,
+                    min: 0,
+                    max: yAxisMax
+                }
+            },
+            plugins: {
+                legend: { position: 'bottom', labels: { filter: (i) => i.text !== 'Año Anterior' } }
+            }
+        },
+        plugins: [{
+            afterDraw: chart => {
+                const ctx = chart.ctx;
+                labels.forEach((l, i) => {
+                    let totalVal = 0, topBarMeta = null;
+                    chart.data.datasets.forEach((ds, dsIdx) => {
+                        if(ds.type === 'bar') {
+                            const v = ds.data[i];
+                            if(v > 0) {
+                                const b = chart.getDatasetMeta(dsIdx).data[i];
+                                ctx.fillStyle = COLORS[ds.label] ? COLORS[ds.label].tx : '#000';
+                                ctx.font = 'bold 10px sans-serif';
+                                ctx.textAlign = 'center';
+                                ctx.fillText(v.toFixed(0), b.x, b.y + b.height/2 + 5);
+                                totalVal += v; topBarMeta = b;
+                            }
+                        }
+                    });
+                    if(topBarMeta && totalVal > 0) {
+                        ctx.fillStyle = 'black'; ctx.font = 'bold 11px sans-serif';
+                        ctx.textAlign = 'center';
+                        ctx.fillText(totalVal.toFixed(0), topBarMeta.x, topBarMeta.y - 10);
+                    }
+                });
+
+                // Etiquetas de la sombra (Año Anterior) removidas
+            }
+        }]
+    });
+}
+
+function changeDash(n) {
+    currentDash = n;
+    document.getElementById('t1').className = 'tab-btn' + (n==1?' active':'');
+    document.getElementById('t2').className = 'tab-btn' + (n==2?' active':'');
+    document.getElementById('row-promedio').style.display = n==2 ? 'flex' : 'none';
+    document.getElementById('date-range-ui').style.display = n==1 ? 'flex' : 'none';
+    updateUIFilters();
+    render();
+}
+
+function setGroup(g) {
+    groupMode = g;
+    document.querySelectorAll('.btn-group').forEach(b => b.className = 'btn-group');
+    document.getElementById('g'+g).className = 'btn-group active';
+    render();
+}
+
+function resetAll() {
+    let f = (currentDash === 1) ? filtersD1 : filtersD2;
+    ['AÑO','MES','SEMANA','ZONA','DIVISION','TIPO'].forEach(field => f[field] = []);
+    initDates();
+    updateUIFilters();
+    render();
+}
+</script>
+</body>
+</html>
