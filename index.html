@@ -193,9 +193,14 @@
         <div class="card">
 
             <!-- Área de carga -->
-            <div id="uploadArea" id="loader">
-                <p>Cargue el archivo Excel para activar las gráficas.</p>
-                <input type="file" id="fileInput" accept=".xlsx">
+            <div id="uploadArea">
+                <div id="autoLoadMsg" style="color:#555; font-size:13px; margin-bottom:12px;">
+                    ⏳ Cargando datos automáticamente...
+                </div>
+                <div id="manualLoad" style="display:none;">
+                    <p style="color:#c00; font-size:13px;">No se pudo cargar el archivo automáticamente.<br>Cárguelo manualmente:</p>
+                    <input type="file" id="fileInput" accept=".xlsx">
+                </div>
             </div>
 
             <div id="mainUI" style="display:none;">
@@ -298,33 +303,57 @@ document.addEventListener('click', (e) => {
     });
 });
 
-document.getElementById('fileInput').onchange = (e) => {
+// ── Función central para procesar el ArrayBuffer del Excel ──────
+function procesarExcel(arrayBuffer) {
+    const wb   = XLSX.read(arrayBuffer, {type: 'array', cellDates: true});
+    const data = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
+    rawData = data.map(r => {
+        let n = {};
+        for(let k in r) n[k.trim().toUpperCase()] = r[k];
+        return n;
+    });
+    document.getElementById('mainUI').style.display   = 'block';
+    document.getElementById('uploadArea').style.display = 'none';
+    initDates();
+    buildFilters();
+    render();
+    document.querySelectorAll('.multiselect').forEach(ms => {
+        ms.addEventListener('click', (ev) => {
+            ev.stopPropagation();
+            const dd = ms.nextElementSibling;
+            const wasOpen = dd.classList.contains('open');
+            document.querySelectorAll('.dropdown-content').forEach(d => d.classList.remove('open'));
+            if (!wasOpen) dd.classList.add('open');
+        });
+    });
+}
+
+// ── Carga automática desde el repositorio ───────────────────────
+const EXCEL_URL = 'historialdiariocarrostaller.xlsx';
+
+window.addEventListener('load', () => {
+    fetch(EXCEL_URL)
+        .then(res => {
+            if (!res.ok) throw new Error('No se encontró el archivo');
+            return res.arrayBuffer();
+        })
+        .then(buffer => {
+            procesarExcel(buffer);
+        })
+        .catch(() => {
+            // Si falla la carga automática, mostrar carga manual
+            document.getElementById('autoLoadMsg').style.display = 'none';
+            document.getElementById('manualLoad').style.display  = 'block';
+        });
+});
+
+// ── Carga manual (respaldo) ──────────────────────────────────────
+document.addEventListener('change', (e) => {
+    if (e.target.id !== 'fileInput') return;
     const reader = new FileReader();
-    reader.onload = (ev) => {
-        const wb = XLSX.read(ev.target.result, {type: 'array', cellDates: true});
-        const data = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
-        rawData = data.map(r => {
-            let n = {};
-            for(let k in r) n[k.trim().toUpperCase()] = r[k];
-            return n;
-        });
-        document.getElementById('mainUI').style.display = 'block';
-        document.getElementById('uploadArea').style.display = 'none';
-        initDates();
-        buildFilters();
-        render();
-        document.querySelectorAll('.multiselect').forEach(ms => {
-            ms.addEventListener('click', (e) => {
-                e.stopPropagation();
-                const dd = ms.nextElementSibling;
-                const wasOpen = dd.classList.contains('open');
-                document.querySelectorAll('.dropdown-content').forEach(d => d.classList.remove('open'));
-                if (!wasOpen) dd.classList.add('open');
-            });
-        });
-    };
+    reader.onload = (ev) => procesarExcel(ev.target.result);
     reader.readAsArrayBuffer(e.target.files[0]);
-};
+});
 
 function initDates() {
     const dates = rawData.map(d => new Date(d.FECHA)).filter(d => !isNaN(d)).sort((a,b) => a-b);
