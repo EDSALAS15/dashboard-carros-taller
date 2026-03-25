@@ -157,10 +157,9 @@ tbody tr.row-selected td{color:var(--blue-tx);}
   <div class="fcard">
     <div class="fn">InventarioAlmacen.xlsx</div>
     <div class="fd">Existencias por almacén</div>
-    <div class="fstatus"><div class="dot" id="dot-inv"></div><span id="st-inv">Conectando a GitHub…</span></div>
-    <button class="ubtn" onclick="fetchFromGitHub()" id="btn-inv" style="cursor:pointer;border:none;">🔄 Actualizar ahora</button>
-    <div style="margin-top:6px;font-size:10px;color:var(--tx3)">O carga un archivo local:</div>
-    <label class="ubtn" for="f-inv" style="margin-top:4px;background:var(--surf2);color:var(--tx2);border-color:var(--bord2)"><span>📂 Cargar archivo local</span></label>
+    <div class="fstatus"><div class="dot" id="dot-inv"></div><span id="st-inv">Actualizando datos…</span></div>
+    <button class="ubtn" onclick="init()" style="cursor:pointer;border:none;margin-bottom:4px;">🔄 Actualizar ahora</button>
+    <label class="ubtn" for="f-inv" style="background:var(--surf2);color:var(--tx2);border-color:var(--bord2);">📂 Cargar archivo local</label>
     <input type="file" id="f-inv" accept=".xls,.xlsx,.csv">
     <button onclick="resetStorage()" id="btn-reset"
       style="display:none;width:100%;margin-top:6px;padding:5px 0;font-size:11px;color:var(--red-tx);background:var(--red-bg);border:.5px solid var(--red);border-radius:6px;cursor:pointer;">
@@ -357,19 +356,6 @@ const TC_LIST=['b-blue','b-teal','b-purple','b-amber','b-red','b-green'];
 const TC_MAP={}; let tci=0;
 function badgeClass(t){if(t==='Sin clasificar'||t==='Correctivo')return 'b-gray';if(!TC_MAP[t])TC_MAP[t]=TC_LIST[tci++%TC_LIST.length];return TC_MAP[t];}
 
-// ══ CACHÉ DOM ════════════════════════════════════════════════
-const _dom={};
-function cacheDOM(){
-  ['ts','dot-inv','st-inv','btn-inv','btn-reset','active-filter',
-   'k-mat','k-mat-lbl','k-tipos-sub','k-exist','k-exist-sub','k-con','k-con-p','k-sin','k-sin-p',
-   'k-sc','k-sc-lbl','k-sc-exist','kpi-mat','empty','dash','table-count',
-   'chart-tipos','chart-alm','tb-det','tb-res','tb-alm',
-   'f-tipo','f-exist','search','lbl-familia','th-tipo',
-   'btn-prev','btn-corr','wrap-tipo','wrap-familia',
-   'card-tipos','card-alm','tcard','ttl-chart-tipos'
-  ].forEach(id=>{_dom[id]=document.getElementById(id);});
-}
-
 // ══ MOTOR MULTI-SELECT GENÉRICO ══════════════════════════════
 // Cada clave: {sel:Set, opts:[], ids para DOM}
 const MS={
@@ -477,60 +463,48 @@ async function clearStorage(){
   }}catch(e){}
 }
 
-// ══ AUTO-CARGA DESDE GITHUB ══════════════════════════════════
-// URL raw del archivo Excel en GitHub (commit fijo)
-const GITHUB_RAW_URL =
-  'https://raw.githubusercontent.com/EDSALAS15/Inventario-Refacciones-Citi/main/InventarioAlmacen.xlsx';
+// ══ INIT ═════════════════════════════════════════════════════
+// ══ URL FUENTE DE DATOS ══════════════════════════════════════
+const _SRC='https://raw.githubusercontent.com/EDSALAS15/Inventario-Refacciones-Citi/main/InventarioAlmacen.xlsx';
 
-// ══ PARSEO COMPARTIDO DE WORKBOOK ════════════════════════════
-function parseWorkbook(wb){
+// ══ PARSEO COMPARTIDO ════════════════════════════════════════
+function _applyWorkbook(wb){
   const sName=wb.SheetNames.includes('InventarioAlmacenCarga')
     ?'InventarioAlmacenCarga'
     :wb.SheetNames.includes('InventarioAlmacen')
       ?'InventarioAlmacen'
       :wb.SheetNames[0];
   invData=XLSX.utils.sheet_to_json(wb.Sheets[sName],{defval:''});
-  const mpSheet=wb.SheetNames.find(s=>/c[oó]digos|mp|mtto|cat[aá]logo/i.test(s)&&s!==sName)
-    ||wb.SheetNames.find(s=>s!==sName);
+  const mpSheet=wb.SheetNames.find(s=>/c[oó]digos|mp|mtto|cat[aá]logo/i.test(s)&&s!==sName)||wb.SheetNames.find(s=>s!==sName);
   const mpRows=mpSheet?XLSX.utils.sheet_to_json(wb.Sheets[mpSheet],{defval:''}):[]; 
   window._mpData=mpRows;
   save(K_INV,invData); save('inv_mp_v10',mpRows);
   const now=new Date().toLocaleString('es-MX');
   save(K_TS,now);
-  _dom['ts'].textContent='Actualizado: '+now;
+  document.getElementById('ts').textContent='Actualizado: '+now;
   updateStatus();
   selTipos.clear();selAlms.clear();selRows.clear();
   buildAndRender();
 }
 
-async function fetchFromGitHub(){
-  _dom['dot-inv'].className='dot';
-  _dom['st-inv'].textContent='⏳ Actualizando datos…';
-  try{
-    const resp=await fetch(GITHUB_RAW_URL);
-    if(!resp.ok) throw new Error('HTTP '+resp.status);
-    const buf=await resp.arrayBuffer();
-    parseWorkbook(XLSX.read(buf,{type:'array'}));
-  } catch(err){
-    console.warn('Actualización automática falló:',err.message);
-    _dom['st-inv'].textContent='⚠️ Sin conexión — cargando datos locales…';
-    await loadFromStorage();
-  }
-}
-
-async function loadFromStorage(){
-  invData=await load(K_INV);
-  window._mpData=await load('inv_mp_v10')||[];
-  const ts=await load(K_TS);
-  if(ts) _dom['ts'].textContent='Actualizado: '+ts;
-  updateStatus();
-  if(invData&&invData.length) buildAndRender();
-}
-
-// ══ INIT ═════════════════════════════════════════════════════
+// ══ AUTO-CARGA AL ABRIR ══════════════════════════════════════
 async function init(){
-  cacheDOM();
-  await fetchFromGitHub();
+  document.getElementById('st-inv').textContent='⏳ Actualizando datos…';
+  try{
+    const resp=await fetch(_SRC);
+    if(!resp.ok) throw new Error('HTTP '+resp.status);
+    _applyWorkbook(XLSX.read(await resp.arrayBuffer(),{type:'array'}));
+  } catch(err){
+    console.warn('Carga automática falló:',err.message);
+    // Fallback: datos guardados localmente
+    invData=await load(K_INV);
+    window._mpData=await load('inv_mp_v10')||[];
+    const ts=await load(K_TS);
+    if(ts)document.getElementById('ts').textContent='Actualizado: '+ts;
+    updateStatus();
+    if(invData&&invData.length)buildAndRender();
+    else document.getElementById('st-inv').textContent='⚠️ Sin conexión — carga un archivo local';
+  }
 }
 
 // ══ CARGA DE ARCHIVO ═════════════════════════════════════════
@@ -540,34 +514,36 @@ function readFile(file){
   if(!file)return;
   const r=new FileReader();
   r.onload=evt=>{
-    try{ parseWorkbook(XLSX.read(evt.target.result,{type:'binary'})); }
+    try{ _applyWorkbook(XLSX.read(evt.target.result,{type:'binary'})); }
     catch(e){alert('Error: '+e.message);}
   };
   r.readAsBinaryString(file);
 }
 
 function updateStatus(){
-  const d=invData;
+  const d=invData, mp=window._mpData||[];
   const hasData=d&&d.length>0;
-  _dom['dot-inv'].className='dot'+(hasData?' ok':'');
+  document.getElementById('dot-inv').className='dot'+(hasData?' ok':'');
   if(hasData){
     const mp=window._mpData||[];
     const ts=localStorage.getItem('inv_dash_'+K_TS)||'';
-    _dom['st-inv'].innerHTML=
+    document.getElementById('st-inv').innerHTML=
       d.length.toLocaleString()+' registros'+(mp.length?' · '+mp.length+' cód.':'')+
       (ts?'<br><span style="font-size:10px;color:var(--tx3)">En memoria desde: '+JSON.parse(ts)+'</span>':'');
   } else {
-    _dom['st-inv'].textContent='Sin datos en memoria';
+    document.getElementById('st-inv').textContent='Sin datos en memoria';
   }
-  if(_dom['btn-reset']) _dom['btn-reset'].style.display=hasData?'block':'none';
+  document.getElementById('btn-inv').textContent=hasData?'Actualizar archivo':'Cargar archivo';
+  const btnReset=document.getElementById('btn-reset');
+  if(btnReset) btnReset.style.display=hasData?'block':'none';
 }
 
 async function resetStorage(){
   if(!confirm('¿Limpiar los datos en memoria? Deberás volver a cargar el archivo.')) return;
   invData=null; window._mpData=[];
   await clearStorage();
-  _dom['empty'].style.display='block';
-  _dom['dash'].style.display='none';
+  document.getElementById('empty').style.display='block';
+  document.getElementById('dash').style.display='none';
   updateStatus();
 }
 
@@ -590,7 +566,7 @@ function buildRows(){
   familiaCol=invCols.find(c=>famCands.includes(c.trim()))||invCols.find(c=>/^famil/i.test(c.trim()))||invCols.find(c=>/^clasif/i.test(c.trim()))||invCols[9]||'';
   const clasifCol=invCols.find(c=>/^clasificaci[oó]n$/i.test(c.trim()))||invCols.find(c=>/clasif/i.test(c.trim()))||null;
   const tnecCol =invCols.find(c=>c.trim()==='Tipo de Necesidad')||invCols.find(c=>/^tipo de necesidad$/i.test(c.trim()))||invCols.find(c=>/necesidad/i.test(c.trim()))||null;
-  const lbl=_dom['lbl-familia'];
+  const lbl=document.getElementById('lbl-familia');
   if(lbl)lbl.textContent=familiaCol||'Agrupación';
   const clas=[],sc=[];
   for(const r of invData){
@@ -621,8 +597,8 @@ function buildAndRender(){
   populateFilters();
   msPopulate('clas',[...new Set([...allClas,...allSC].map(r=>r.clasif).filter(Boolean))].sort());
   msPopulate('tnec',[...new Set([...allClas,...allSC].map(r=>r.tnec).filter(Boolean))].sort());
-  _dom['empty'].style.display='none';
-  _dom['dash'].style.display='flex';
+  document.getElementById('empty').style.display='none';
+  document.getElementById('dash').style.display='flex';
   updateKPIsc();
   applyFilters();
 }
@@ -632,13 +608,14 @@ function populateFilters(){
   const src=modoRefac==='corr'?allSC:allClas;
   msPopulate('alm',[...new Set(src.map(r=>r.almacen))].sort());
   if(modoRefac==='prev'){
-    _dom['wrap-tipo'].style.display='';
-    _dom['wrap-familia'].style.display='none';
+    document.getElementById('wrap-tipo').style.display='';
+    document.getElementById('wrap-familia').style.display='none';
     const tipos=[...new Set(allClas.map(r=>r.tipo))].sort();
-    _dom['f-tipo'].innerHTML='<option value="">Todos los tipos</option>'+tipos.map(t=>`<option>${t}</option>`).join('');
+    const st=document.getElementById('f-tipo');
+    st.innerHTML='<option value="">Todos los tipos</option>'+tipos.map(t=>`<option>${t}</option>`).join('');
   } else {
-    _dom['wrap-tipo'].style.display='none';
-    _dom['wrap-familia'].style.display='';
+    document.getElementById('wrap-tipo').style.display='none';
+    document.getElementById('wrap-familia').style.display='';
     msPopulate('fam',[...new Set(allSC.map(r=>r.tipo))].filter(Boolean).sort());
   }
 }
@@ -647,23 +624,24 @@ function setRefac(modo){
   if(modoRefac===modo)return;
   modoRefac=modo;
   selTipos.clear();selAlms.clear();selRows.clear();
-  _dom['btn-prev'].classList.toggle('active',modo==='prev');
-  _dom['btn-corr'].classList.toggle('active',modo==='corr');
+  document.getElementById('btn-prev').classList.toggle('active',modo==='prev');
+  document.getElementById('btn-corr').classList.toggle('active',modo==='corr');
   const isPrev=modo==='prev';
-  _dom['k-mat-lbl'].textContent=isPrev?'Materiales preventivos':'Materiales correctivos';
-  _dom['k-exist-sub'].textContent=isPrev?'Piezas preventivas':'Piezas correctivas';
-  _dom['k-sc-lbl'].textContent=isPrev?'Correctivos':'Preventivos';
-  _dom['ttl-chart-tipos'].textContent=isPrev?'Existencias por Tipo de Mantenimiento':'Existencias por '+(familiaCol||'Clasificación');
-  if(_dom['th-tipo'])_dom['th-tipo'].textContent=isPrev?'Tipo de Mantenimiento':(familiaCol||'Familia');
-  _dom['f-exist'].value='';
+  document.getElementById('k-mat-lbl').textContent=isPrev?'Materiales preventivos':'Materiales correctivos';
+  document.getElementById('k-exist-sub').textContent=isPrev?'Piezas preventivas':'Piezas correctivas';
+  document.getElementById('k-sc-lbl').textContent=isPrev?'Correctivos':'Preventivos';
+  document.getElementById('ttl-chart-tipos').textContent=isPrev?'Existencias por Tipo de Mantenimiento':'Existencias por '+(familiaCol||'Clasificación');
+  const th=document.getElementById('th-tipo');
+  if(th)th.textContent=isPrev?'Tipo de Mantenimiento':(familiaCol||'Familia');
+  document.getElementById('f-exist').value='';
   populateFilters();
   applyFilters();
 }
 
 function applyFilters(){
   const sAlm=MS.alm.sel, sClas=MS.clas.sel, sFam=MS.fam.sel;
-  const exist=_dom['f-exist'].value;
-  const srch=_dom['search'].value.toLowerCase();
+  const exist=document.getElementById('f-exist').value;
+  const srch=document.getElementById('search').value.toLowerCase();
   const filt=(rows,extraFn)=>{
     let r=[...rows];
     if(sAlm.size>0){if(sAlm.has('__none__'))r=[];else r=r.filter(x=>sAlm.has(x.almacen));}
@@ -677,7 +655,7 @@ function applyFilters(){
     return r;
   };
   if(modoRefac==='prev'){
-    const tipo=_dom['f-tipo'].value;
+    const tipo=document.getElementById('f-tipo').value;
     baseClas=filt(allClas,tipo?r=>r.tipo===tipo:null);
     baseSC=[...allSC];
   } else {
@@ -696,29 +674,31 @@ function renderAll(){
   if(selAlms.size>0)biRows=biRows.filter(r=>selAlms.has(r.almacen));
 
   const hasRowSel=selRows.size>0;
+  // Filas exactas seleccionadas en la tabla
   const selectedRows=hasRowSel?biRows.filter(r=>selRows.has(r.codigo)):biRows;
-  const chartSource=hasRowSel?selectedRows:biRows;
 
-  const rowSelTipos=hasRowSel?new Set(selectedRows.map(r=>r.tipo)):selTipos;
-  const rowSelAlms =hasRowSel?new Set(selectedRows.map(r=>r.almacen)):selAlms;
+  // Las gráficas usan: si hay selección de filas → solo esas filas
+  //                    si hay selección de barras → biRows filtrado por barras
+  //                    si no hay nada → activeRows completo
+  const chartSource = hasRowSel ? selectedRows : biRows;
 
-  updateKPIs(activeRows,chartSource);
-  requestAnimationFrame(()=>{
-    renderChartTipos(activeRows,rowSelTipos,rowSelAlms,hasRowSel?selectedRows:null);
-    renderChartAlm(activeRows,rowSelTipos,rowSelAlms,hasRowSel?selectedRows:null);
-    renderTables(biRows,selectedRows);
-  });
+  // Para highlight en gráficas: derivar Sets de tipos/almacenes de las filas seleccionadas
+  const rowSelTipos = hasRowSel ? new Set(selectedRows.map(r=>r.tipo)) : selTipos;
+  const rowSelAlms  = hasRowSel ? new Set(selectedRows.map(r=>r.almacen)) : selAlms;
+
+  updateKPIs(activeRows, chartSource);
+  renderChartTipos(activeRows, rowSelTipos, rowSelAlms, hasRowSel ? selectedRows : null);
+  renderChartAlm(activeRows,   rowSelTipos, rowSelAlms, hasRowSel ? selectedRows : null);
+  renderTables(biRows, selectedRows);
   updateBIBadge();
   const hasSel=selTipos.size>0||selAlms.size>0||selRows.size>0;
-  _dom['card-tipos'].classList.toggle('has-sel',hasSel);
-  _dom['card-alm'].classList.toggle('has-sel',hasSel);
-  _dom['tcard'].classList.toggle('has-sel',hasSel);
+  ['card-tipos','card-alm','tcard'].forEach(id=>document.getElementById(id).classList.toggle('has-sel',hasSel));
 }
 
 // ══ KPIs ═════════════════════════════════════════════════════
 function updateKPIsc(){
-  _dom['k-sc'].textContent=allSC.length.toLocaleString();
-  _dom['k-sc-exist'].textContent=allSC.reduce((a,r)=>a+r.existencia,0).toLocaleString('es-MX')+' piezas';
+  document.getElementById('k-sc').textContent=allSC.length.toLocaleString();
+  document.getElementById('k-sc-exist').textContent=allSC.reduce((a,r)=>a+r.existencia,0).toLocaleString('es-MX')+' piezas';
 }
 function updateKPIs(base,bi){
   const rows=(selTipos.size>0||selAlms.size>0||selRows.size>0)?bi:base;
@@ -731,23 +711,24 @@ function updateKPIs(base,bi){
   }
   const tipos=tiposSet.size;
   const lbl=modoRefac==='prev'?'tipo(s) preventivo(s)':'familia(s)';
-  _dom['k-mat'].textContent=tot.toLocaleString();
-  _dom['k-tipos-sub'].textContent=tipos+' '+lbl;
-  _dom['k-exist'].textContent=exist.toLocaleString('es-MX');
-  _dom['k-con'].textContent=con.toLocaleString();
-  _dom['k-con-p'].textContent=tot?(con/tot*100).toFixed(1)+'% del total':'—';
-  _dom['k-sin'].textContent=(tot-con).toLocaleString();
-  _dom['k-sin-p'].textContent=tot?((tot-con)/tot*100).toFixed(1)+'% del total':'—';
-  _dom['kpi-mat'].classList.toggle('hi',selTipos.size>0||selAlms.size>0||selRows.size>0);
+  document.getElementById('k-mat').textContent=tot.toLocaleString();
+  document.getElementById('k-tipos-sub').textContent=tipos+' '+lbl;
+  document.getElementById('k-exist').textContent=exist.toLocaleString('es-MX');
+  document.getElementById('k-con').textContent=con.toLocaleString();
+  document.getElementById('k-con-p').textContent=tot?(con/tot*100).toFixed(1)+'% del total':'—';
+  document.getElementById('k-sin').textContent=(tot-con).toLocaleString();
+  document.getElementById('k-sin-p').textContent=tot?((tot-con)/tot*100).toFixed(1)+'% del total':'—';
+  document.getElementById('kpi-mat').classList.toggle('hi',selTipos.size>0||selAlms.size>0||selRows.size>0);
 }
 
 // ══ GRÁFICAS SVG ═════════════════════════════════════════════
 function renderChartTipos(rows,sTipos,sAlms,rowData){
-  const src=rowData?(rowData):(sAlms&&sAlms.size>0?rows.filter(r=>sAlms.has(r.almacen)):rows);
+  // Si hay filas seleccionadas en tabla, usarlas como fuente de las barras
+  const src=rowData ? rowData : (sAlms&&sAlms.size>0?rows.filter(r=>sAlms.has(r.almacen)):rows);
   const tm={};
   for(const r of src)tm[r.tipo]=(tm[r.tipo]||0)+r.existencia;
   const data=Object.entries(tm).sort((a,b)=>b[1]-a[1]).map(([l,v],i)=>({l,v,c:PAL[i%PAL.length]}));
-  const ct=_dom['chart-tipos'];
+  const ct=document.getElementById('chart-tipos');
   if(!data.length){ct.innerHTML='<p style="padding:16px;font-size:12px;color:var(--tx3)">Sin datos</p>';return;}
   const anyT=sTipos&&sTipos.size>0, maxV=Math.max(...data.map(d=>d.v));
   const LW=148,BW=148,VW=60,PH=30,PV=14,W=LW+BW+VW,H=data.length*PH+PV*2;
@@ -767,23 +748,36 @@ function renderChartTipos(rows,sTipos,sAlms,rowData){
 }
 
 function renderChartAlm(rows,sTipos,sAlms,rowData){
-  const src=rowData?(rowData):(sTipos&&sTipos.size>0?rows.filter(r=>sTipos.has(r.tipo)):rows);
+  const src=rowData ? rowData : (sTipos&&sTipos.size>0?rows.filter(r=>sTipos.has(r.tipo)):rows);
   window._almExportRows=src;
+
+  // Construir mapa de existencias del contexto filtrado (src)
   const amSrc={};
   for(const r of src) amSrc[r.almacen]=(amSrc[r.almacen]||0)+r.existencia;
+
+  // Siempre mostrar TODOS los almacenes del contexto base (rows),
+  // rellenando con 0 los que no aparecen en src
   const allAlms=[...new Set(rows.map(r=>r.almacen))].sort((a,b)=>{
     const va=amSrc[a]||0, vb=amSrc[b]||0;
     return vb-va || a.localeCompare(b);
   });
+
+  // Paleta fija por almacén para que no cambie de color al filtrar
   const almColor={};
   allAlms.forEach((a,i)=>almColor[a]=PAL[i%PAL.length]);
-  const data=allAlms.map(alm=>({l:alm,v:amSrc[alm]||0,c:almColor[alm]}));
-  const ca=_dom['chart-alm'];
+
+  const data=allAlms.map(alm=>({l:alm, v:amSrc[alm]||0, c:almColor[alm]}));
+
+  const ca=document.getElementById('chart-alm');
   if(!data.length){ca.innerHTML='<p style="padding:16px;font-size:12px;color:var(--tx3)">Sin datos</p>';return;}
+
   const anyA=sAlms&&sAlms.size>0;
-  const maxV=Math.max(...data.map(d=>d.v),1);
+  const maxV=Math.max(...data.map(d=>d.v),1); // mínimo 1 para evitar div/0
+
+  // Tamaño FIJO independiente de cuántas barras haya datos
   const CW=34,GAP=5,PL=6,PR=6,PT=28,PB=58,BH=110;
   const W=PL+(CW+GAP)*data.length+PR, H=BH+PT+PB;
+
   const cols=data.map((d,i)=>{
     const bh=d.v>0?Math.max(Math.round(d.v/maxV*BH),3):0;
     const x=PL+i*(CW+GAP), y=PT+(BH-bh);
@@ -791,9 +785,10 @@ function renderChartAlm(rows,sTipos,sAlms,rowData){
     const isEmpty=d.v===0;
     const lbl=d.l.includes('–')?d.l.split('–')[0].trim():d.l.slice(0,5);
     const sub=d.l.includes('–')?d.l.split('–')[1].trim():'';
+    // Barra vacía: línea base punteada
     const barEl=isEmpty
-      ?`<rect x="${x}" y="${PT+BH-1}" width="${CW}" height="2" rx="1" fill="${d.c}" opacity="0.2"/>`
-      :`<rect class="bar-rect" x="${x}" y="${y}" width="${CW}" height="${bh}" rx="3" fill="${d.c}" opacity="${isDim?.25:.88}"${isSel?` stroke="${d.c}" stroke-width="1.5"`:''}/>`;
+      ? `<rect x="${x}" y="${PT+BH-1}" width="${CW}" height="2" rx="1" fill="${d.c}" opacity="0.2"/>`
+      : `<rect class="bar-rect" x="${x}" y="${y}" width="${CW}" height="${bh}" rx="3" fill="${d.c}" opacity="${isDim?.25:.88}"${isSel?` stroke="${d.c}" stroke-width="1.5"`:''}/>`;
     return `<g class="bar-group${isDim?' dimmed':''}${isSel?' selected':''}" data-alm="${d.l}" onclick="onBarAlm(event,this)">
 <rect x="${x-2}" y="${PT}" width="${CW+4}" height="${BH+PB}" fill="transparent"/>
 ${barEl}
@@ -802,6 +797,7 @@ ${barEl}
 <text x="${x+CW/2}" y="${y-5}" text-anchor="middle" font-size="9" fill="${isEmpty?'var(--tx3)':isDim?'var(--tx3)':'var(--tx2)'}">${isEmpty?'':d.v.toLocaleString('es-MX')}</text>
 </g>`;
   }).join('');
+
   ca.innerHTML=`<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block;overflow:visible">
 <text x="${W-2}" y="12" text-anchor="end" font-size="9" fill="var(--tx3)">Ctrl+clic = multi</text>
 <line x1="${PL}" y1="${PT+BH}" x2="${W-PR}" y2="${PT+BH}" stroke="var(--bord2)" stroke-width="0.5"/>
@@ -827,7 +823,7 @@ function onRowClick(evt,key){
 }
 function clearBISelection(){selTipos.clear();selAlms.clear();selRows.clear();renderAll();}
 function updateBIBadge(){
-  const badge=_dom['active-filter'],parts=[];
+  const badge=document.getElementById('active-filter'),parts=[];
   if(selTipos.size===1)parts.push([...selTipos][0]);else if(selTipos.size>1)parts.push(selTipos.size+' tipos');
   if(selAlms.size===1)parts.push([...selAlms][0]);else if(selAlms.size>1)parts.push(selAlms.size+' almacenes');
   if(selRows.size>0)parts.push(selRows.size+(selRows.size===1?' código':' códigos'));
@@ -837,13 +833,12 @@ function updateBIBadge(){
 
 // ══ TABLAS ════════════════════════════════════════════════════
 let activeTab='det';
-// Cachear nodos de tabs al iniciar (se llama desde cacheDOM implícitamente al usarlos)
-let _tabs=null, _tcs=null;
 function setActiveTab(t){
   activeTab=t;
-  if(!_tabs){_tabs=document.querySelectorAll('.tab');_tcs=document.querySelectorAll('.tc');}
-  _tabs.forEach(x=>x.classList.toggle('active',x.dataset.t===t));
-  _tcs.forEach(x=>x.classList.toggle('active',x.id==='tc-'+t));
+  document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
+  document.querySelectorAll('.tc').forEach(x=>x.classList.remove('active'));
+  document.querySelectorAll(`.tab[data-t="${t}"]`).forEach(x=>x.classList.add('active'));
+  document.getElementById('tc-'+t).classList.add('active');
 }
 
 function renderTables(rows, tableRows){
@@ -851,10 +846,9 @@ function renderTables(rows, tableRows){
   window._exportRows=disp;
   const hasSel=selRows.size>0;
   const cnt=rows.length+(hasSel?' ('+selRows.size+(selRows.size===1?' cód. sel.)':' cód. sel.)'):'');
-  _dom['table-count'].textContent=cnt+' registros';
-
-  // Detalle — limitar a 600 filas
-  _dom['tb-det'].innerHTML=rows.slice(0,600).map(r=>{
+  document.getElementById('table-count').textContent=cnt+' registros';
+  // Detalle
+  document.getElementById('tb-det').innerHTML=rows.slice(0,600).map(r=>{
     const key=r.codigo, isSel=selRows.has(key), isDim=hasSel&&!isSel;
     return `<tr class="${isSel?'row-selected':isDim?'row-dimmed':''}" onclick="onRowClick(event,'${key.replace(/'/g,"\'")}')">
     <td><code style="font-size:11px;background:var(--surf2);padding:1px 4px;border-radius:3px">${r.codigo}</code></td>
@@ -866,15 +860,14 @@ function renderTables(rows, tableRows){
     <td style="text-align:right"><span class="badge ${r.existencia>0?'b-green':'b-red'}">${r.existencia.toLocaleString('es-MX')}</span></td>
     </tr>`;
   }).join('');
-
-  // Resumen por tipo — un solo bucle en lugar de múltiples .filter/.reduce
+  // Resumen por tipo
   const rm={};
   for(const r of rows){
     if(!rm[r.tipo])rm[r.tipo]={tot:0,con:0,sin:0,exist:0};
     rm[r.tipo].tot++;
     if(r.existencia>0){rm[r.tipo].con++;rm[r.tipo].exist+=r.existencia;}else rm[r.tipo].sin++;
   }
-  _dom['tb-res'].innerHTML=Object.entries(rm)
+  document.getElementById('tb-res').innerHTML=Object.entries(rm)
     .sort((a,b)=>{if(a[0]==='Sin clasificar')return 1;if(b[0]==='Sin clasificar')return -1;return b[1].exist-a[1].exist;})
     .map(([tipo,d])=>{
       const pct=d.tot?Math.round(d.con/d.tot*100):0;
@@ -889,15 +882,14 @@ function renderTables(rows, tableRows){
       <td style="text-align:right">${d.exist.toLocaleString('es-MX')}</td>
       </tr>`;
     }).join('');
-
-  // Por almacén — un solo bucle
+  // Por almacén
   const am={};
   for(const r of rows){
     const k=r.almacen+'||'+r.tipo;
     if(!am[k])am[k]={alm:r.almacen,tipo:r.tipo,cnt:0,exist:0};
     am[k].cnt++;am[k].exist+=r.existencia;
   }
-  _dom['tb-alm'].innerHTML=Object.values(am)
+  document.getElementById('tb-alm').innerHTML=Object.values(am)
     .sort((a,b)=>a.alm.localeCompare(b.alm)||b.exist-a.exist)
     .map(e=>{
       const isSel=selAlms.has(e.alm)||selTipos.has(e.tipo);
@@ -986,7 +978,6 @@ function exportTabla(tab){
   const el=document.getElementById(id);
   if(el)el.addEventListener('change',()=>{if(allClas.length||allSC.length)applyFilters();});
 });
-// Debounce en búsqueda — evita un render por cada tecla presionada
 let _srchTimer=null;
 document.getElementById('search').addEventListener('input',()=>{
   clearTimeout(_srchTimer);
