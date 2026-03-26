@@ -699,18 +699,20 @@ function render() {
         // ── Modo AÑO múltiple: una barra apilada por año ──────────
         aniosGraficar.forEach((anio, idx) => {
             const mapaAnio = buildMapaAnio(anio, false);
-            // Meta para este año — solo si hay valores
+            // Meta para este año — null donde no hay valor, spanGaps:false para no unir huecos
             const metaDataAnio = labels.map(l => {
                 const node = mapaAnio[String(anio)];
-                return node && node.metaCount > 0 ? Math.round(node.metaSum / node.metaCount) : 0;
+                const v = node && node.metaCount > 0 ? Math.round(node.metaSum / node.metaCount) : 0;
+                return v > 0 ? v : null;
             });
-            if (metaDataAnio.some(v => v > 0)) {
+            if (metaDataAnio.some(v => v !== null)) {
                 datasets.push({
                     label: `Meta ${anio}`, type: 'line',
                     data: metaDataAnio,
                     borderColor: BAR_COLORS[idx % BAR_COLORS.length],
                     borderWidth: 2, pointRadius: 0, fill: false,
-                    borderDash: [6,3], order: 0
+                    borderDash: [6,3], order: 0,
+                    spanGaps: false
                 });
             }
             // Barras por categoría para este año
@@ -730,14 +732,20 @@ function render() {
         });
     } else {
         // ── Modo normal: Meta + Sombra + Barras ───────────────────
-        datasets.push({
-            label: 'Meta', type: 'line',
-            data: labels.map(l => {
-                const node = actualMap[l];
-                return node && node.metaCount > 0 ? Math.round(node.metaSum / node.metaCount) : 0;
-            }),
-            borderColor: '#0071C1', borderWidth: 3, pointRadius: 0, fill: false, order: 0
+        const metaData = labels.map(l => {
+            const node = actualMap[l];
+            const v = node && node.metaCount > 0 ? Math.round(node.metaSum / node.metaCount) : 0;
+            return v > 0 ? v : null;   // null = no graficar ese punto
         });
+        if (metaData.some(v => v !== null)) {
+            datasets.push({
+                label: 'Meta', type: 'line',
+                data: metaData,
+                borderColor: '#0071C1', borderWidth: 3, pointRadius: 0,
+                fill: false, order: 0,
+                spanGaps: false   // no unir puntos nulos con línea
+            });
+        }
 
         datasets.push({
             label: 'Año Anterior', type: 'line',
