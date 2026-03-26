@@ -623,8 +623,7 @@ function render() {
                 if (isPrev) dt.setFullYear(dt.getFullYear()+1);
                 key = dt.toLocaleDateString();
             } else {
-                // En modo AÑO múltiple, la key es el año mismo (ya filtrado por anio)
-                key = isD2MultiAnio ? String(anio) : d[groupMode];
+                key = d[groupMode];
             }
             if (!key) return;
 
@@ -653,40 +652,55 @@ function render() {
     // ── D2 modo MES → siempre mostrar los 12 meses ───────────────
     const isD2Mes = isD2 && groupMode === 'MES';
 
-    // ── Obtener años a graficar en D2 modo AÑO ────────────────────
-    let aniosGraficar = [];
-    if (isD2MultiAnio) {
-        // Si hay años seleccionados en el filtro, usarlos; si no, usar el año base
-        aniosGraficar = f.AÑO.length > 0
-            ? f.AÑO.map(Number).sort((a,b) => a-b)
-            : [anioBase];
-    }
+    // ── Años a graficar en modo AÑO ───────────────────────────────
+    // Todos los años disponibles en los datos, o los seleccionados en el filtro
+    const todosAniosDisponibles = [...new Set(rawData.map(d => Number(d.AÑO)).filter(y => y > 1900))].sort((a,b) => a-b);
+    const aniosGraficar = isD2MultiAnio
+        ? (f.AÑO.length > 0 ? f.AÑO.map(Number).sort((a,b) => a-b) : todosAniosDisponibles)
+        : [];
 
-    // ── Mapas principales ─────────────────────────────────────────
+    // ── Función para calcular promedio anual por categoría ────────
+    // Suma todos los registros del año y divide entre días únicos
+    const calcPromedioAnio = (anio) => {
+        const acum = { total:0, metaSum:0, metaCount:0, diasUnicos: new Set() };
+        CATEGORIES.forEach(c => acum[c] = 0);
+        rawData.forEach(d => {
+            if (Number(d.AÑO) !== anio) return;
+            if (f.MES.length    > 0 && !f.MES.includes(String(d.MES)))       return;
+            if (f.SEMANA.length > 0 && !f.SEMANA.includes(String(d.SEMANA))) return;
+            if (!passCommon(d)) return;
+            const fechaReal = new Date(d.FECHA);
+            if (!isNaN(fechaReal)) acum.diasUnicos.add(fechaReal.toISOString().split('T')[0]);
+            acum.metaSum   += Number(d[colMeta] || 0);
+            acum.metaCount++;
+            CATEGORIES.forEach(c => {
+                const v = Number(d[c] || 0);
+                acum[c]    += v;
+                acum.total += v;
+            });
+        });
+        const n = acum.diasUnicos.size || 1;
+        const result = { total: Math.round(acum.total / n), metaPromedio: acum.metaCount > 0 ? Math.round(acum.metaSum / acum.metaCount) : 0 };
+        CATEGORIES.forEach(c => result[c] = Math.round(acum[c] / n));
+        return result;
+    };
+
+    // ── Mapas principales (para modos no-AÑO) ─────────────────────
     const actualMap = buildMapaAnio(anioBase, false);
     const prevMap   = buildMapaAnio(targetYear, true);
 
-    // ── Actualizar KPIs y título ───────────────────────────────────────────
-    // Para D2 multiAnio los KPIs usan el año base solamente
-    const labelsForKpi = isD2MultiAnio
-        ? Object.keys(buildMapaAnio(anioBase, false))
-        : null; // se calculará con labels reales abajo
-
     // ── Labels ───────────────────────────────────────────────────
     let labels;
-    if (isD2Mes) {
-        // Siempre los 12 meses completos
-        labels = [...MESES_ORDEN];
-    } else if (isD2MultiAnio) {
-        // Un label por año a graficar
+    if (isD2MultiAnio) {
         labels = aniosGraficar.map(String);
+    } else if (isD2Mes) {
+        labels = [...MESES_ORDEN];
     } else if (isD1) {
         labels = Object.keys(actualMap).sort((a,b) => {
             const [da,ma,aa] = a.split('/'), [db,mb,ab] = b.split('/');
             return new Date(+aa,+ma-1,+da) - new Date(+ab,+mb-1,+db);
         });
     } else {
-        // D2 modo SEMANA u otro
         labels = Object.keys(actualMap).sort((a,b) => Number(a)-Number(b));
     }
 
@@ -696,35 +710,34 @@ function render() {
 
     // ── Construir datasets ────────────────────────────────────────
     const datasets = [];
-    const BAR_COLORS = ['#C10230','#0071C1','#00882B','#FF6600','#7B2D8B','#00AEEF'];
 
     if (isD2MultiAnio) {
-        // ── Modo AÑO: una barra apilada por año, colores estándar ─
-        // Meta única (promedio de todos los años seleccionados con datos)
+        // ── Modo AÑO: una barra apilada por año, promedio real ────
+        const promediosPorAnio = {};
+        aniosGraficar.forEach(anio => { promediosPorAnio[anio] = calcPromedioAnio(anio); });
+
+        // Meta — punto por año, solo si tiene valor
         const metaMulti = labels.map(l => {
-            const mapaAnio = buildMapaAnio(Number(l), false);
-            const node = mapaAnio[l];
-            const v = node && node.metaCount > 0 ? Math.round(node.metaSum / node.metaCount) : 0;
-            return v > 0 ? v : null;
+            const p = promediosPorAnio[Number(l)];
+            return p && p.metaPromedio > 0 ? p.metaPromedio : null;
         });
         if (metaMulti.some(v => v !== null)) {
             datasets.push({
                 label: 'Meta', type: 'line',
                 data: metaMulti,
-                borderColor: '#0071C1', borderWidth: 3, pointRadius: 4,
+                borderColor: '#0071C1', borderWidth: 2, pointRadius: 5,
+                pointBackgroundColor: '#0071C1',
                 fill: false, order: 0, spanGaps: false
             });
         }
-        // Una barra apilada por categoría, cada año es un label separado
+
+        // Barras apiladas por categoría
         CATEGORIES.forEach(c => {
             datasets.push({
                 label: c, type: 'bar',
                 data: labels.map(l => {
-                    const mapaAnio = buildMapaAnio(Number(l), false);
-                    const node = mapaAnio[l];
-                    if (!node) return 0;
-                    const n = node.diasUnicos.size || 1;
-                    return Math.round(node[c] / n);
+                    const p = promediosPorAnio[Number(l)];
+                    return p ? p[c] : 0;
                 }),
                 backgroundColor: COLORS[c].bg,
                 stack: 'stack1', order: 1,
@@ -781,12 +794,8 @@ function render() {
     labels.forEach(l => {
         if (isD2MultiAnio) {
             aniosGraficar.forEach(anio => {
-                const mapaAnio = buildMapaAnio(anio, false);
-                const node = mapaAnio[String(anio)];
-                if (node) {
-                    const v = Math.round(node.total / (node.diasUnicos.size || 1));
-                    if (v > yMax) yMax = v;
-                }
+                const p = promediosPorAnio[anio];
+                if (p && p.total > yMax) yMax = p.total;
             });
         } else {
             const a = actualMap[l];
