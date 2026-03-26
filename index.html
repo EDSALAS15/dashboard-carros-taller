@@ -420,147 +420,231 @@ function handleFilterChange(field) {
 }
 
 function render() {
-    let f = (currentDash === 1) ? filtersD1 : filtersD2;
+    const f    = (currentDash === 1) ? filtersD1 : filtersD2;
+    const isD1 = (currentDash === 1);
+    const isD2 = !isD1;
 
-    // Calcular el año base UNA sola vez: el máximo año presente en los datos según filtros activos
-    const todosLosAnios = rawData
+    // ── Columna de meta según ZONA ────────────────────────────────
+    let colMeta = 'META TOTAL';
+    if (f.ZONA.length === 1) {
+        const z = f.ZONA[0].toUpperCase();
+        if (z === 'LOCAL')   colMeta = 'META LOCAL';
+        else if (z === 'FORANEA') colMeta = 'META FORANEA';
+    }
+
+    // ── Año base (para sombra del año anterior) ───────────────────
+    const todosAnios = rawData
         .filter(d => {
             if (f.AÑO.length > 0 && !f.AÑO.includes(String(d.AÑO))) return false;
-            if (currentDash === 1 && f.sd && f.ed) {
+            if (isD1 && f.sd && f.ed) {
                 const dt = new Date(d.FECHA);
-                if (dt < new Date(f.sd + "T00:00:00") || dt > new Date(f.ed + "T23:59:59")) return false;
+                if (dt < new Date(f.sd+"T00:00:00") || dt > new Date(f.ed+"T23:59:59")) return false;
             }
             return true;
         })
-        .map(d => Number(d.AÑO))
-        .filter(y => y > 1900);
-    const anioBase = todosLosAnios.length > 0
-        ? Math.max(...todosLosAnios)
+        .map(d => Number(d.AÑO)).filter(y => y > 1900);
+    const anioBase  = todosAnios.length > 0
+        ? Math.max(...todosAnios)
         : Math.max(...rawData.map(d => Number(d.AÑO)).filter(y => y > 1900));
     const targetYear = anioBase - 1;
 
-    const getAgrupado = (isPrev) => {
-        let filtrados = rawData.filter(d => {
-            if (isPrev) {
-                // Estrictamente solo el año anterior inmediato
-                if (Number(d.AÑO) !== targetYear) return false;
-                if (currentDash === 1) {
-                    const dt = new Date(d.FECHA);
-                    const sd = new Date(f.sd + "T00:00:00"); sd.setFullYear(sd.getFullYear() - 1);
-                    const ed = new Date(f.ed + "T23:59:59"); ed.setFullYear(ed.getFullYear() - 1);
-                    if (dt < sd || dt > ed) return false;
+    // ── Filtros comunes ───────────────────────────────────────────
+    const passCommon = d =>
+        (f.ZONA.length     === 0 || f.ZONA.includes(String(d.ZONA)))     &&
+        (f.DIVISION.length === 0 || f.DIVISION.includes(String(d.DIVISION))) &&
+        (f.TIPO.length     === 0 || f.TIPO.includes(String(d.TIPO)));
+
+    // ── Helper: construir mapa de un año ─────────────────────────
+    const buildMapaAnio = (anio, isPrev) => {
+        const mapa = {};
+        rawData.forEach(d => {
+            if (Number(d.AÑO) !== anio) return;
+            if (isD1) {
+                const dt = new Date(d.FECHA);
+                let sd, ed;
+                if (isPrev) {
+                    sd = new Date(f.sd+"T00:00:00"); sd.setFullYear(sd.getFullYear()-1);
+                    ed = new Date(f.ed+"T23:59:59"); ed.setFullYear(ed.getFullYear()-1);
                 } else {
-                    if (f.MES.length > 0 && !f.MES.includes(String(d.MES))) return false;
-                    if (f.SEMANA.length > 0 && !f.SEMANA.includes(String(d.SEMANA))) return false;
+                    sd = new Date(f.sd+"T00:00:00");
+                    ed = new Date(f.ed+"T23:59:59");
                 }
+                if (dt < sd || dt > ed) return;
             } else {
-                // Estrictamente solo el año base
-                if (Number(d.AÑO) !== anioBase) return false;
-                if (currentDash === 1) {
-                    const dt = new Date(d.FECHA);
-                    const sd = new Date(f.sd + "T00:00:00");
-                    const ed = new Date(f.ed + "T23:59:59");
-                    if (dt < sd || dt > ed) return false;
+                if (!isPrev) {
+                    if (f.MES.length    > 0 && !f.MES.includes(String(d.MES)))       return;
+                    if (f.SEMANA.length > 0 && !f.SEMANA.includes(String(d.SEMANA))) return;
+                } else {
+                    if (f.MES.length    > 0 && !f.MES.includes(String(d.MES)))       return;
+                    if (f.SEMANA.length > 0 && !f.SEMANA.includes(String(d.SEMANA))) return;
                 }
             }
-            return (f.MES.length === 0 || isPrev || f.MES.includes(String(d.MES))) &&
-                   (f.SEMANA.length === 0 || isPrev || f.SEMANA.includes(String(d.SEMANA))) &&
-                   (f.ZONA.length === 0 || f.ZONA.includes(String(d.ZONA))) &&
-                   (f.DIVISION.length === 0 || f.DIVISION.includes(String(d.DIVISION))) &&
-                   (f.TIPO.length === 0 || f.TIPO.includes(String(d.TIPO)));
-        });
+            if (!passCommon(d)) return;
 
-        let mapa = {};
-        filtrados.forEach(d => {
-            let dt = new Date(d.FECHA);
-            if(isPrev) dt.setFullYear(dt.getFullYear() + 1);
-            let key = (currentDash === 1) ? dt.toLocaleDateString() : d[groupMode];
-            if(!mapa[key]) {
-                mapa[key] = { total: 0, metaSum: 0, metaCount: 0, diasUnicos: new Set() };
+            let key;
+            if (isD1) {
+                const dt = new Date(d.FECHA);
+                if (isPrev) dt.setFullYear(dt.getFullYear()+1);
+                key = dt.toLocaleDateString();
+            } else {
+                key = d[groupMode];
+            }
+            if (!key) return;
+
+            if (!mapa[key]) {
+                mapa[key] = { total:0, metaSum:0, metaCount:0, diasUnicos: new Set() };
                 CATEGORIES.forEach(c => mapa[key][c] = 0);
             }
-            mapa[key].diasUnicos.add(dt.toISOString().split('T')[0]);
-            // META según ZONA seleccionada: solo LOCAL → META LOCAL, solo FORANEA → META FORANEA, resto → META TOTAL
-            let colMeta = 'META TOTAL';
-            if (f.ZONA.length === 1) {
-                const z = f.ZONA[0].toUpperCase();
-                if (z === 'LOCAL')   colMeta = 'META LOCAL';
-                else if (z === 'FORANEA') colMeta = 'META FORANEA';
-            }
-            mapa[key].metaSum += Number(d[colMeta] || 0);
-            mapa[key].metaCount++;
+            const node = mapa[key];
+            node.diasUnicos.add(key);
+            node.metaSum += Number(d[colMeta] || 0);
+            node.metaCount++;
             CATEGORIES.forEach(c => {
-                let v = Number(d[c] || 0);
-                mapa[key][c] += v;
-                mapa[key].total += v;
+                const v = Number(d[c] || 0);
+                node[c]     += v;
+                node.total  += v;
             });
         });
         return mapa;
     };
 
-    const actualMap = getAgrupado(false);
-    const prevMap   = getAgrupado(true);
+    // ── D2 modo AÑO con múltiples años → una serie por año ────────
+    const isD2MultiAnio = isD2 && groupMode === 'AÑO' && f.AÑO.length > 1;
 
-    let labels = Object.keys(actualMap).sort((a,b) => {
-        if(currentDash === 1) {
-            const [da,ma,aa]=a.split('/'); const [db,mb,ab]=b.split('/');
-            return new Date(aa,ma-1,da) - new Date(ab,mb-1,db);
-        }
-        if(groupMode === 'MES') return MESES_ORDEN.indexOf(a) - MESES_ORDEN.indexOf(b);
-        return Number(a) - Number(b);
-    });
+    // ── D2 modo MES → siempre mostrar los 12 meses ───────────────
+    const isD2Mes = isD2 && groupMode === 'MES';
 
-    const datasets = [];
+    // ── Obtener años a graficar en D2 modo AÑO ────────────────────
+    let aniosGraficar = [];
+    if (isD2MultiAnio) {
+        aniosGraficar = f.AÑO.map(Number).sort((a,b) => a-b);
+    }
 
-    datasets.push({
-        label: 'Meta', type: 'line',
-        data: labels.map(l => {
-            const node = actualMap[l];
-            return node.metaCount > 0 ? Math.round(node.metaSum / node.metaCount) : 0;
-        }),
-        borderColor: '#0071C1', borderWidth: 3, pointRadius: 0, fill: false, order: 0
-    });
+    // ── Mapas principales ─────────────────────────────────────────
+    const actualMap = buildMapaAnio(anioBase, false);
+    const prevMap   = buildMapaAnio(targetYear, true);
 
-    datasets.push({
-        label: 'Año Anterior', type: 'line',
-        data: labels.map(l => {
-            if(!prevMap[l]) return 0;
-            let n = prevMap[l].diasUnicos.size || 1;
-            return Math.round((currentDash === 1) ? prevMap[l].total : (prevMap[l].total / n));
-        }),
-        yAxisID: 'ySombra',
-        fill: true, backgroundColor: 'rgba(180,180,180,0.4)',
-        borderColor: 'transparent', borderWidth: 0, pointRadius: 0, order: 2
-    });
-
-    CATEGORIES.forEach(c => {
-        datasets.push({
-            label: c, type: 'bar',
-            data: labels.map(l => {
-                if(!actualMap[l]) return 0;
-                let n = actualMap[l].diasUnicos.size || 1;
-                return Math.round((currentDash === 1) ? actualMap[l][c] : (actualMap[l][c] / n));
-            }),
-            backgroundColor: COLORS[c].bg, stack: 'stack1', order: 1
+    // ── Labels ───────────────────────────────────────────────────
+    let labels;
+    if (isD2Mes) {
+        // Siempre los 12 meses completos
+        labels = [...MESES_ORDEN];
+    } else if (isD2MultiAnio) {
+        // Un label por año seleccionado
+        labels = aniosGraficar.map(String);
+    } else if (isD1) {
+        labels = Object.keys(actualMap).sort((a,b) => {
+            const [da,ma,aa] = a.split('/'), [db,mb,ab] = b.split('/');
+            return new Date(+aa,+ma-1,+da) - new Date(+ab,+mb-1,+db);
         });
-    });
+    } else {
+        // D2 modo SEMANA u otro
+        labels = Object.keys(actualMap).sort((a,b) => Number(a)-Number(b));
+    }
 
-    // Calcular el máximo global (barras apiladas + sombra) para fijar el eje Y
+    // ── Construir datasets ────────────────────────────────────────
+    const datasets = [];
+    const BAR_COLORS = ['#C10230','#0071C1','#00882B','#FF6600','#7B2D8B','#00AEEF'];
+
+    if (isD2MultiAnio) {
+        // ── Modo AÑO múltiple: una barra apilada por año ──────────
+        aniosGraficar.forEach((anio, idx) => {
+            const mapaAnio = buildMapaAnio(anio, false);
+            // Meta para este año
+            datasets.push({
+                label: `Meta ${anio}`, type: 'line',
+                data: labels.map(l => {
+                    const node = mapaAnio[String(anio)];
+                    return node && node.metaCount > 0 ? Math.round(node.metaSum / node.metaCount) : 0;
+                }),
+                borderColor: BAR_COLORS[idx % BAR_COLORS.length],
+                borderWidth: 2, pointRadius: 0, fill: false,
+                borderDash: [6,3], order: 0
+            });
+            // Barras por categoría para este año
+            CATEGORIES.forEach(c => {
+                datasets.push({
+                    label: `${c} (${anio})`, type: 'bar',
+                    data: labels.map(l => {
+                        const node = mapaAnio[String(anio)];
+                        if (!node) return 0;
+                        const n = node.diasUnicos.size || 1;
+                        return Math.round(node[c] / n);
+                    }),
+                    backgroundColor: COLORS[c].bg,
+                    stack: `stack${anio}`, order: 1
+                });
+            });
+        });
+    } else {
+        // ── Modo normal: Meta + Sombra + Barras ───────────────────
+        datasets.push({
+            label: 'Meta', type: 'line',
+            data: labels.map(l => {
+                const node = actualMap[l];
+                return node && node.metaCount > 0 ? Math.round(node.metaSum / node.metaCount) : 0;
+            }),
+            borderColor: '#0071C1', borderWidth: 3, pointRadius: 0, fill: false, order: 0
+        });
+
+        datasets.push({
+            label: 'Año Anterior', type: 'line',
+            data: labels.map(l => {
+                const p = prevMap[l];
+                if (!p) return 0;
+                const n = p.diasUnicos.size || 1;
+                return Math.round(isD1 ? p.total : p.total / n);
+            }),
+            yAxisID: 'ySombra',
+            fill: true, backgroundColor: 'rgba(180,180,180,0.4)',
+            borderColor: 'transparent', borderWidth: 0, pointRadius: 0, order: 2
+        });
+
+        CATEGORIES.forEach(c => {
+            datasets.push({
+                label: c, type: 'bar',
+                data: labels.map(l => {
+                    const a = actualMap[l];
+                    if (!a) return 0;
+                    const n = a.diasUnicos.size || 1;
+                    return Math.round(isD1 ? a[c] : a[c] / n);
+                }),
+                backgroundColor: COLORS[c].bg, stack: 'stack1', order: 1
+            });
+        });
+    }
+
+    // ── Calcular yMax considerando barras + sombra ────────────────
     let yMax = 0;
     labels.forEach(l => {
-        const a = actualMap[l];
-        if (a) {
-            const stackVal = currentDash === 1 ? a.total : Math.round(a.total / (a.diasUnicos.size || 1));
-            if (stackVal > yMax) yMax = stackVal;
-        }
-        const p = prevMap[l];
-        if (p) {
-            const sombra = currentDash === 1 ? p.total : Math.round(p.total / (p.diasUnicos.size || 1));
-            if (sombra > yMax) yMax = sombra;
+        if (isD2MultiAnio) {
+            aniosGraficar.forEach(anio => {
+                const mapaAnio = buildMapaAnio(anio, false);
+                const node = mapaAnio[String(anio)];
+                if (node) {
+                    const v = Math.round(node.total / (node.diasUnicos.size || 1));
+                    if (v > yMax) yMax = v;
+                }
+            });
+        } else {
+            const a = actualMap[l];
+            if (a) {
+                const v = isD1 ? a.total : Math.round(a.total / (a.diasUnicos.size || 1));
+                if (v > yMax) yMax = v;
+            }
+            const p = prevMap[l];
+            if (p) {
+                const v = isD1 ? p.total : Math.round(p.total / (p.diasUnicos.size || 1));
+                if (v > yMax) yMax = v;
+            }
         }
     });
-    // Añadir 15% de margen para que las etiquetas no queden pegadas al borde
     const yAxisMax = Math.ceil(yMax * 1.15) || 10;
+
+    // ── Filtro de leyenda ─────────────────────────────────────────
+    const legendFilter = isD2MultiAnio
+        ? i => true   // mostrar todo en modo multi-año
+        : i => i.text !== 'Año Anterior';
 
     if(myChart) myChart.destroy();
     myChart = new Chart(document.getElementById('myChart'), {
@@ -568,46 +652,47 @@ function render() {
         options: {
             responsive: true, maintainAspectRatio: false,
             scales: {
-                x: { stacked: true, ticks: { minRotation: currentDash === 1 ? 90 : 0 }, grid: { display: false } },
-                y: { stacked: true, grid: { display: false }, max: yAxisMax, beginAtZero: true },
+                x: { stacked: !isD2MultiAnio, ticks: { minRotation: isD1 ? 90 : 0 }, grid: { display: false } },
+                y: { stacked: !isD2MultiAnio, grid: { display: false }, max: yAxisMax, beginAtZero: true },
                 ySombra: {
-                    display: false,
-                    stacked: false,
-                    beginAtZero: true,
-                    min: 0,
-                    max: yAxisMax
+                    display: false, stacked: false,
+                    beginAtZero: true, min: 0, max: yAxisMax
                 }
             },
             plugins: {
-                legend: { position: 'bottom', labels: { filter: (i) => i.text !== 'Año Anterior' } }
+                legend: { position: 'bottom', labels: { filter: legendFilter } }
             }
         },
         plugins: [{
             afterDraw: chart => {
                 const ctx = chart.ctx;
-                labels.forEach((l, i) => {
-                    let totalVal = 0, topBarMeta = null;
+                ctx.textAlign = 'center';
+                chart.data.labels.forEach((l, i) => {
+                    let totalVal = 0, topB = null;
+                    // Agrupar totales por stack
+                    const stackTotals = {};
                     chart.data.datasets.forEach((ds, dsIdx) => {
-                        if(ds.type === 'bar') {
-                            const v = ds.data[i];
-                            if(v > 0) {
-                                const b = chart.getDatasetMeta(dsIdx).data[i];
-                                ctx.fillStyle = COLORS[ds.label] ? COLORS[ds.label].tx : '#000';
-                                ctx.font = 'bold 10px sans-serif';
-                                ctx.textAlign = 'center';
-                                ctx.fillText(v.toFixed(0), b.x, b.y + b.height/2 + 5);
-                                totalVal += v; topBarMeta = b;
-                            }
+                        if (ds.type !== 'bar') return;
+                        const v = ds.data[i];
+                        if (v > 0) {
+                            const b = chart.getDatasetMeta(dsIdx).data[i];
+                            ctx.fillStyle = COLORS[ds.label.split(' ')[0]] ? COLORS[ds.label.split(' ')[0]].tx : (COLORS[ds.label] ? COLORS[ds.label].tx : '#000');
+                            ctx.font = 'bold 10px sans-serif';
+                            ctx.fillText(v.toFixed(0), b.x, b.y + b.height/2 + 5);
+                            const stack = ds.stack || 'default';
+                            stackTotals[stack] = (stackTotals[stack] || { val:0, topB:null });
+                            stackTotals[stack].val += v;
+                            stackTotals[stack].topB = b;
                         }
                     });
-                    if(topBarMeta && totalVal > 0) {
-                        ctx.fillStyle = 'black'; ctx.font = 'bold 11px sans-serif';
-                        ctx.textAlign = 'center';
-                        ctx.fillText(totalVal.toFixed(0), topBarMeta.x, topBarMeta.y - 10);
-                    }
+                    Object.values(stackTotals).forEach(st => {
+                        if (st.topB && st.val > 0) {
+                            ctx.fillStyle = 'black';
+                            ctx.font = 'bold 11px sans-serif';
+                            ctx.fillText(st.val.toFixed(0), st.topB.x, st.topB.y - 10);
+                        }
+                    });
                 });
-
-                // Etiquetas de la sombra (Año Anterior) removidas
             }
         }]
     });
