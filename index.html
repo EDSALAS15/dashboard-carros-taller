@@ -560,6 +560,7 @@ function render() {
     const isD1 = (currentDash === 1);
     const isD2 = !isD1;
 
+
     // ── Columna de meta según ZONA ────────────────────────────────
     let colMeta = 'META TOTAL';
     if (f.ZONA.length === 1) {
@@ -749,7 +750,9 @@ function render() {
 
     // Pre-calcular promedios por año (necesario también fuera del if para yMax)
     const promediosPorAnio = {};
-    if (isD2MultiAnio) aniosGraficar.forEach(anio => { promediosPorAnio[anio] = calcPromedioAnio(anio); });
+    if (isD2MultiAnio) {
+        aniosGraficar.forEach(anio => { promediosPorAnio[anio] = calcPromedioAnio(anio); });
+    }
 
     if (isD2MultiAnio) {
         // ── Modo AÑO: una barra apilada por año, promedio real ────
@@ -854,13 +857,15 @@ function render() {
     // ── Filtro de leyenda ─────────────────────────────────────────
     const legendFilter = i => i.text !== 'Año Anterior';
 
-    // Siempre destruir y recrear para evitar conflictos de configuración entre modos
+    // Destruir chart anterior y reemplazar el canvas para evitar artefactos de Chart.js
     if (myChart) { myChart.destroy(); myChart = null; }
-    const canvas = document.getElementById('myChart');
-    // Limpiar el canvas completamente
-    const ctx2d = canvas.getContext('2d');
-    ctx2d.clearRect(0, 0, canvas.width, canvas.height);
-    myChart = new Chart(canvas, {
+    const container = document.querySelector('.chart-container');
+    const oldCanvas = document.getElementById('myChart');
+    if (oldCanvas) oldCanvas.remove();
+    const newCanvas = document.createElement('canvas');
+    newCanvas.id = 'myChart';
+    container.appendChild(newCanvas);
+    myChart = new Chart(newCanvas, {
         data: { labels, datasets },
         options: {
             responsive: true, maintainAspectRatio: false,
