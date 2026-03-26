@@ -647,8 +647,8 @@ function render() {
         return mapa;
     };
 
-    // ── D2 modo AÑO con múltiples años → una serie por año ────────
-    const isD2MultiAnio = isD2 && groupMode === 'AÑO' && f.AÑO.length > 1;
+    // ── D2 modo AÑO → activo cuando groupMode es AÑO en D2 ─────────
+    const isD2MultiAnio = isD2 && groupMode === 'AÑO';
 
     // ── D2 modo MES → siempre mostrar los 12 meses ───────────────
     const isD2Mes = isD2 && groupMode === 'MES';
@@ -656,7 +656,10 @@ function render() {
     // ── Obtener años a graficar en D2 modo AÑO ────────────────────
     let aniosGraficar = [];
     if (isD2MultiAnio) {
-        aniosGraficar = f.AÑO.map(Number).sort((a,b) => a-b);
+        // Si hay años seleccionados en el filtro, usarlos; si no, usar el año base
+        aniosGraficar = f.AÑO.length > 0
+            ? f.AÑO.map(Number).sort((a,b) => a-b)
+            : [anioBase];
     }
 
     // ── Mapas principales ─────────────────────────────────────────
@@ -675,7 +678,7 @@ function render() {
         // Siempre los 12 meses completos
         labels = [...MESES_ORDEN];
     } else if (isD2MultiAnio) {
-        // Un label por año seleccionado
+        // Un label por año a graficar
         labels = aniosGraficar.map(String);
     } else if (isD1) {
         labels = Object.keys(actualMap).sort((a,b) => {
@@ -696,39 +699,36 @@ function render() {
     const BAR_COLORS = ['#C10230','#0071C1','#00882B','#FF6600','#7B2D8B','#00AEEF'];
 
     if (isD2MultiAnio) {
-        // ── Modo AÑO múltiple: una barra apilada por año ──────────
-        aniosGraficar.forEach((anio, idx) => {
-            const mapaAnio = buildMapaAnio(anio, false);
-            // Meta para este año — null donde no hay valor, spanGaps:false para no unir huecos
-            const metaDataAnio = labels.map(l => {
-                const node = mapaAnio[String(anio)];
-                const v = node && node.metaCount > 0 ? Math.round(node.metaSum / node.metaCount) : 0;
-                return v > 0 ? v : null;
+        // ── Modo AÑO: una barra apilada por año, colores estándar ─
+        // Meta única (promedio de todos los años seleccionados con datos)
+        const metaMulti = labels.map(l => {
+            const mapaAnio = buildMapaAnio(Number(l), false);
+            const node = mapaAnio[l];
+            const v = node && node.metaCount > 0 ? Math.round(node.metaSum / node.metaCount) : 0;
+            return v > 0 ? v : null;
+        });
+        if (metaMulti.some(v => v !== null)) {
+            datasets.push({
+                label: 'Meta', type: 'line',
+                data: metaMulti,
+                borderColor: '#0071C1', borderWidth: 3, pointRadius: 4,
+                fill: false, order: 0, spanGaps: false
             });
-            if (metaDataAnio.some(v => v !== null)) {
-                datasets.push({
-                    label: `Meta ${anio}`, type: 'line',
-                    data: metaDataAnio,
-                    borderColor: BAR_COLORS[idx % BAR_COLORS.length],
-                    borderWidth: 2, pointRadius: 0, fill: false,
-                    borderDash: [6,3], order: 0,
-                    spanGaps: false
-                });
-            }
-            // Barras por categoría para este año
-            CATEGORIES.forEach(c => {
-                datasets.push({
-                    label: `${c} (${anio})`, type: 'bar',
-                    data: labels.map(l => {
-                        const node = mapaAnio[String(anio)];
-                        if (!node) return 0;
-                        const n = node.diasUnicos.size || 1;
-                        return Math.round(node[c] / n);
-                    }),
-                    backgroundColor: COLORS[c].bg,
-                    stack: `stack${anio}`, order: 1,
-                    maxBarThickness: 80
-                });
+        }
+        // Una barra apilada por categoría, cada año es un label separado
+        CATEGORIES.forEach(c => {
+            datasets.push({
+                label: c, type: 'bar',
+                data: labels.map(l => {
+                    const mapaAnio = buildMapaAnio(Number(l), false);
+                    const node = mapaAnio[l];
+                    if (!node) return 0;
+                    const n = node.diasUnicos.size || 1;
+                    return Math.round(node[c] / n);
+                }),
+                backgroundColor: COLORS[c].bg,
+                stack: 'stack1', order: 1,
+                maxBarThickness: 80
             });
         });
     } else {
@@ -804,9 +804,7 @@ function render() {
     const yAxisMax = Math.ceil(yMax * 1.15) || 10;
 
     // ── Filtro de leyenda ─────────────────────────────────────────
-    const legendFilter = isD2MultiAnio
-        ? i => true   // mostrar todo en modo multi-año
-        : i => i.text !== 'Año Anterior';
+    const legendFilter = i => i.text !== 'Año Anterior';
 
     if(myChart) myChart.destroy();
     myChart = new Chart(document.getElementById('myChart'), {
