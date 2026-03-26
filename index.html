@@ -496,7 +496,9 @@ function render() {
                 CATEGORIES.forEach(c => mapa[key][c] = 0);
             }
             const node = mapa[key];
-            node.diasUnicos.add(key);
+            // Usar la fecha real del día para contar días únicos y promediar correctamente
+            const fechaReal = new Date(d.FECHA);
+            if (!isNaN(fechaReal)) node.diasUnicos.add(fechaReal.toISOString().split('T')[0]);
             node.metaSum += Number(d[colMeta] || 0);
             node.metaCount++;
             CATEGORIES.forEach(c => {
