@@ -659,29 +659,57 @@ function render() {
         ? (f.AÑO.length > 0 ? f.AÑO.map(Number).sort((a,b) => a-b) : todosAniosDisponibles)
         : [];
 
-    // ── Función para calcular promedio anual por categoría ────────
-    // Suma todos los registros del año y divide entre días únicos
+    // ── Función para calcular promedio anual por categoría ──────────
+    // Agrupa igual que el modo MES: promedio diario por mes, luego promedio de meses con datos
     const calcPromedioAnio = (anio) => {
-        const acum = { total:0, metaSum:0, metaCount:0, diasUnicos: new Set() };
-        CATEGORIES.forEach(c => acum[c] = 0);
+        // Paso 1: acumular por mes (igual que buildMapaAnio con groupMode='MES')
+        const porMes = {};
         rawData.forEach(d => {
             if (Number(d.AÑO) !== anio) return;
             if (f.MES.length    > 0 && !f.MES.includes(String(d.MES)))       return;
             if (f.SEMANA.length > 0 && !f.SEMANA.includes(String(d.SEMANA))) return;
             if (!passCommon(d)) return;
+            const mes = d['MES'];
+            if (!mes) return;
+            if (!porMes[mes]) {
+                porMes[mes] = { total:0, metaSum:0, metaCount:0, diasUnicos: new Set() };
+                CATEGORIES.forEach(c => porMes[mes][c] = 0);
+            }
+            const node = porMes[mes];
             const fechaReal = new Date(d.FECHA);
-            if (!isNaN(fechaReal)) acum.diasUnicos.add(fechaReal.toISOString().split('T')[0]);
-            acum.metaSum   += Number(d[colMeta] || 0);
-            acum.metaCount++;
+            if (!isNaN(fechaReal)) node.diasUnicos.add(fechaReal.toISOString().split('T')[0]);
+            node.metaSum += Number(d[colMeta] || 0);
+            node.metaCount++;
             CATEGORIES.forEach(c => {
                 const v = Number(d[c] || 0);
-                acum[c]    += v;
-                acum.total += v;
+                node[c]    += v;
+                node.total += v;
             });
         });
-        const n = acum.diasUnicos.size || 1;
-        const result = { total: Math.round(acum.total / n), metaPromedio: acum.metaCount > 0 ? Math.round(acum.metaSum / acum.metaCount) : 0 };
-        CATEGORIES.forEach(c => result[c] = Math.round(acum[c] / n));
+
+        // Paso 2: calcular promedio de cada mes y luego promedio anual
+        const meses = Object.values(porMes);
+        if (meses.length === 0) {
+            const empty = { total:0, metaPromedio:0 };
+            CATEGORIES.forEach(c => empty[c] = 0);
+            return empty;
+        }
+        const result = { total:0, metaPromedio:0 };
+        CATEGORIES.forEach(c => result[c] = 0);
+        let metaSuma = 0, metaConMeses = 0;
+        meses.forEach(node => {
+            const n = node.diasUnicos.size || 1;
+            result.total += Math.round(node.total / n);
+            CATEGORIES.forEach(c => result[c] += Math.round(node[c] / n));
+            if (node.metaCount > 0) {
+                metaSuma += Math.round(node.metaSum / node.metaCount);
+                metaConMeses++;
+            }
+        });
+        const m = meses.length;
+        result.total        = Math.round(result.total / m);
+        result.metaPromedio = metaConMeses > 0 ? Math.round(metaSuma / metaConMeses) : 0;
+        CATEGORIES.forEach(c => result[c] = Math.round(result[c] / m));
         return result;
     };
 
