@@ -699,7 +699,9 @@ function render() {
         // Luego promedio de esos meses = promedio anual
         const promediosMes = meses.map(node => {
             const n = node.diasUnicos.size || 1;
-            const pm = { total: node.total / n, metaPromedio: node.metaCount > 0 ? node.metaSum / node.metaCount : 0 };
+            // Meta: valor fijo del mes (mismo en todos los registros del mes), tomar el promedio
+            const metaVal = node.metaCount > 0 ? node.metaSum / node.metaCount : 0;
+            const pm = { total: node.total / n, metaPromedio: metaVal };
             CATEGORIES.forEach(c => pm[c] = node[c] / n);
             return pm;
         });
@@ -707,13 +709,14 @@ function render() {
         const m = promediosMes.length;
         const result = { total:0, metaPromedio:0 };
         CATEGORIES.forEach(c => result[c] = 0);
+        let metaMeses = 0;
         promediosMes.forEach(pm => {
-            result.total        += pm.total;
-            result.metaPromedio += pm.metaPromedio;
+            result.total += pm.total;
+            if (pm.metaPromedio > 0) { result.metaPromedio += pm.metaPromedio; metaMeses++; }
             CATEGORIES.forEach(c => result[c] += pm[c]);
         });
         result.total        = Math.round(result.total / m);
-        result.metaPromedio = Math.round(result.metaPromedio / m);
+        result.metaPromedio = metaMeses > 0 ? Math.round(result.metaPromedio / metaMeses) : 0;
         CATEGORIES.forEach(c => result[c] = Math.round(result[c] / m));
         return result;
     };
@@ -760,9 +763,10 @@ function render() {
             datasets.push({
                 label: 'Meta', type: 'line',
                 data: metaMulti,
-                borderColor: '#0071C1', borderWidth: 2, pointRadius: 5,
+                borderColor: '#0071C1', borderWidth: 3, pointRadius: 5,
                 pointBackgroundColor: '#0071C1',
-                fill: false, order: 0, spanGaps: false
+                fill: false, order: 0, spanGaps: false,
+                yAxisID: 'y'
             });
         }
 
@@ -850,8 +854,13 @@ function render() {
     // ── Filtro de leyenda ─────────────────────────────────────────
     const legendFilter = i => i.text !== 'Año Anterior';
 
-    if(myChart) myChart.destroy();
-    myChart = new Chart(document.getElementById('myChart'), {
+    // Siempre destruir y recrear para evitar conflictos de configuración entre modos
+    if (myChart) { myChart.destroy(); myChart = null; }
+    const canvas = document.getElementById('myChart');
+    // Limpiar el canvas completamente
+    const ctx2d = canvas.getContext('2d');
+    ctx2d.clearRect(0, 0, canvas.width, canvas.height);
+    myChart = new Chart(canvas, {
         data: { labels, datasets },
         options: {
             responsive: true, maintainAspectRatio: false,
