@@ -149,8 +149,32 @@
             font-size: 9px; font-weight: bold; height: 20px;
         }
 
+        /* ── KPI Cards ── */
+        .kpi-row { display: flex; gap: 12px; margin-bottom: 12px; }
+        .kpi-card {
+            flex: 1; background: #F9F9F9;
+            border: 1px solid #e8e8e8; border-radius: 10px; padding: 12px 16px;
+            display: flex; flex-direction: column;
+            align-items: center; justify-content: space-between;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+            min-height: 90px; text-align: center;
+        }
+        .kpi-label { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; color: #999; width: 100%; }
+        .kpi-value { font-size: 22px; font-weight: 800; color: #333F48; line-height: 1; flex: 1; display: flex; align-items: center; justify-content: center; width: 100%; }
+        .kpi-sub   { font-size: 10px; color: #888; text-align: center; width: 100%; }
+        .kpi-delta { display: inline-flex; align-items: center; gap: 3px; font-size: 11px; font-weight: 700; padding: 2px 6px; border-radius: 20px; width: fit-content; }
+        .kpi-delta.up   { background: #e8f5e9; color: #2e7d32; }
+        .kpi-delta.down { background: #fdecea; color: #c62828; }
+        .kpi-delta.flat { background: #f5f5f5; color: #757575; }
+
+        /* ── Título de gráfica ── */
+        .chart-title { font-size: 13px; font-weight: 700; color: #333; margin-bottom: 6px; padding-left: 2px; display: flex; align-items: center; gap: 8px; }
+        .chart-title span.ct-dash { font-size: 11px; font-weight: 600; background: #333F48; color: #fff; padding: 2px 8px; border-radius: 20px; }
+        .chart-title span.ct-zone { font-size: 11px; font-weight: 600; background: #E4002B; color: #fff; padding: 2px 8px; border-radius: 20px; }
+        .chart-title span.ct-info { font-size: 11px; color: #888; font-weight: 500; }
+
         /* ── Gráfica ── */
-        .chart-container { height: 490px; position: relative; margin-top: 10px; }
+        .chart-container { height: 450px; position: relative; margin-top: 10px; }
 
         /* ── Upload ── */
         #uploadArea {
@@ -257,6 +281,47 @@
                         <button class="btn-clear" onclick="resetAll()">LIMPIAR FILTROS</button>
                     </div>
 
+                </div>
+
+                <!-- KPI Cards -->
+                <div class="kpi-row" id="kpiRow" style="display:none;">
+                    <div class="kpi-card">
+                        <div class="kpi-label">Acumulado</div>
+                        <div class="kpi-value" id="kpiAcum">—</div>
+                        <div class="kpi-sub"   id="kpiAcumSub"></div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="kpi-label">Variación vs año anterior</div>
+                        <div class="kpi-value" id="kpiVar">—</div>
+                        <div class="kpi-sub"   id="kpiVarSub"></div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="kpi-label">Promedio del periodo</div>
+                        <div class="kpi-value" id="kpiMes">—</div>
+                        <div class="kpi-sub"   id="kpiMesSub"></div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="kpi-label">Máximo del periodo</div>
+                        <div class="kpi-value" id="kpiBest">—</div>
+                        <div class="kpi-sub"   id="kpiBestSub"></div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="kpi-label">Mínimo del periodo</div>
+                        <div class="kpi-value" id="kpiMin">—</div>
+                        <div class="kpi-sub"   id="kpiMinSub"></div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="kpi-label">Año anterior promedio</div>
+                        <div class="kpi-value" id="kpiPrev">—</div>
+                        <div class="kpi-sub"   id="kpiPrevSub"></div>
+                    </div>
+                </div>
+
+                <!-- Título dinámico de gráfica -->
+                <div class="chart-title" id="chartTitle" style="display:none;">
+                    <span class="ct-dash" id="ctDash">—</span>
+                    <span class="ct-zone" id="ctZone">—</span>
+                    <span class="ct-info" id="ctInfo">—</span>
                 </div>
 
                 <!-- Gráfica -->
@@ -420,6 +485,76 @@ function handleFilterChange(field) {
     render();
 }
 
+// ── KPI helpers ──────────────────────────────────────────────────────
+function makeDelta(pct) {
+    const arrow = pct > 0 ? '▲' : pct < 0 ? '▼' : '●';
+    const cls   = pct > 0 ? 'up' : pct < 0 ? 'down' : 'flat';
+    return `<span class="kpi-delta ${cls}">${arrow} ${Math.abs(pct).toFixed(1)}%</span>`;
+}
+
+function updateKPIs(actualMap, prevMap, labels, isD1) {
+    const kpiRow    = document.getElementById('kpiRow');
+    const chartTitle = document.getElementById('chartTitle');
+    if (!kpiRow) return;
+    kpiRow.style.display    = 'flex';
+    chartTitle.style.display = 'flex';
+
+    // Calcular totales del periodo actual
+    let sumActual = 0, countActual = 0, maxVal = 0, minVal = Infinity;
+    labels.forEach(l => {
+        const a = actualMap[l];
+        if (!a) return;
+        const n = a.diasUnicos.size || 1;
+        const v = isD1 ? a.total : Math.round(a.total / n);
+        if (v > 0) {
+            sumActual += v; countActual++;
+            if (v > maxVal) maxVal = v;
+            if (v < minVal) minVal = v;
+        }
+    });
+    const promActual = countActual > 0 ? Math.round(sumActual / countActual) : 0;
+    if (minVal === Infinity) minVal = 0;
+
+    // Año anterior promedio
+    let sumPrev = 0, countPrev = 0;
+    labels.forEach(l => {
+        const p = prevMap[l];
+        if (!p) return;
+        const n = p.diasUnicos.size || 1;
+        const v = isD1 ? p.total : Math.round(p.total / n);
+        if (v > 0) { sumPrev += v; countPrev++; }
+    });
+    const promPrev = countPrev > 0 ? Math.round(sumPrev / countPrev) : 0;
+    const varPct   = promPrev > 0 ? ((promActual - promPrev) / promPrev) * 100 : 0;
+
+    document.getElementById('kpiAcum').textContent    = isD1 ? sumActual.toLocaleString('es-MX') : promActual.toLocaleString('es-MX');
+    document.getElementById('kpiAcumSub').textContent = isD1 ? 'Total período' : 'Promedio período';
+    document.getElementById('kpiVar').innerHTML       = makeDelta(varPct);
+    document.getElementById('kpiVarSub').textContent  = 'vs año anterior';
+    document.getElementById('kpiMes').textContent     = promActual.toLocaleString('es-MX');
+    document.getElementById('kpiMesSub').textContent  = isD1 ? 'Promedio diario' : 'Promedio del período';
+    document.getElementById('kpiBest').textContent    = maxVal.toLocaleString('es-MX');
+    document.getElementById('kpiBestSub').textContent = 'Máximo';
+    document.getElementById('kpiMin').textContent     = minVal.toLocaleString('es-MX');
+    document.getElementById('kpiMinSub').textContent  = 'Mínimo';
+    document.getElementById('kpiPrev').textContent    = promPrev.toLocaleString('es-MX');
+    document.getElementById('kpiPrevSub').textContent = 'Año anterior promedio';
+}
+
+function updateChartTitle(isD1, f, anioBase, groupMode) {
+    const ctDash = document.getElementById('ctDash');
+    const ctZone = document.getElementById('ctZone');
+    const ctInfo = document.getElementById('ctInfo');
+    if (!ctDash) return;
+    ctDash.textContent = isD1 ? 'Cantidad Diaria' : 'Promedio';
+    const zonaText = f.ZONA.length > 0 ? f.ZONA.join(', ') : 'Todas las zonas';
+    ctZone.textContent = zonaText;
+    let info = `Año ${anioBase}`;
+    if (isD1 && f.sd && f.ed) info = `${f.sd} → ${f.ed}`;
+    else if (!isD1) info = `Agrupado por ${groupMode}`;
+    ctInfo.textContent = info;
+}
+
 function render() {
     const f    = (currentDash === 1) ? filtersD1 : filtersD2;
     const isD1 = (currentDash === 1);
@@ -488,7 +623,8 @@ function render() {
                 if (isPrev) dt.setFullYear(dt.getFullYear()+1);
                 key = dt.toLocaleDateString();
             } else {
-                key = d[groupMode];
+                // En modo AÑO múltiple, la key es el año mismo (ya filtrado por anio)
+                key = isD2MultiAnio ? String(anio) : d[groupMode];
             }
             if (!key) return;
 
@@ -527,6 +663,12 @@ function render() {
     const actualMap = buildMapaAnio(anioBase, false);
     const prevMap   = buildMapaAnio(targetYear, true);
 
+    // ── Actualizar KPIs y título ───────────────────────────────────────────
+    // Para D2 multiAnio los KPIs usan el año base solamente
+    const labelsForKpi = isD2MultiAnio
+        ? Object.keys(buildMapaAnio(anioBase, false))
+        : null; // se calculará con labels reales abajo
+
     // ── Labels ───────────────────────────────────────────────────
     let labels;
     if (isD2Mes) {
@@ -545,6 +687,10 @@ function render() {
         labels = Object.keys(actualMap).sort((a,b) => Number(a)-Number(b));
     }
 
+    // ── KPIs y título ────────────────────────────────────────────────────
+    updateKPIs(actualMap, prevMap, labels, isD1);
+    updateChartTitle(isD1, f, anioBase, groupMode);
+
     // ── Construir datasets ────────────────────────────────────────
     const datasets = [];
     const BAR_COLORS = ['#C10230','#0071C1','#00882B','#FF6600','#7B2D8B','#00AEEF'];
@@ -553,17 +699,20 @@ function render() {
         // ── Modo AÑO múltiple: una barra apilada por año ──────────
         aniosGraficar.forEach((anio, idx) => {
             const mapaAnio = buildMapaAnio(anio, false);
-            // Meta para este año
-            datasets.push({
-                label: `Meta ${anio}`, type: 'line',
-                data: labels.map(l => {
-                    const node = mapaAnio[String(anio)];
-                    return node && node.metaCount > 0 ? Math.round(node.metaSum / node.metaCount) : 0;
-                }),
-                borderColor: BAR_COLORS[idx % BAR_COLORS.length],
-                borderWidth: 2, pointRadius: 0, fill: false,
-                borderDash: [6,3], order: 0
+            // Meta para este año — solo si hay valores
+            const metaDataAnio = labels.map(l => {
+                const node = mapaAnio[String(anio)];
+                return node && node.metaCount > 0 ? Math.round(node.metaSum / node.metaCount) : 0;
             });
+            if (metaDataAnio.some(v => v > 0)) {
+                datasets.push({
+                    label: `Meta ${anio}`, type: 'line',
+                    data: metaDataAnio,
+                    borderColor: BAR_COLORS[idx % BAR_COLORS.length],
+                    borderWidth: 2, pointRadius: 0, fill: false,
+                    borderDash: [6,3], order: 0
+                });
+            }
             // Barras por categoría para este año
             CATEGORIES.forEach(c => {
                 datasets.push({
