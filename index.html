@@ -726,7 +726,8 @@ function render() {
                         return Math.round(node[c] / n);
                     }),
                     backgroundColor: COLORS[c].bg,
-                    stack: `stack${anio}`, order: 1
+                    stack: `stack${anio}`, order: 1,
+                    maxBarThickness: 80
                 });
             });
         });
