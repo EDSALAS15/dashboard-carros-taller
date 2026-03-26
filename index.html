@@ -711,10 +711,12 @@ function render() {
     // ── Construir datasets ────────────────────────────────────────
     const datasets = [];
 
+    // Pre-calcular promedios por año (necesario también fuera del if para yMax)
+    const promediosPorAnio = {};
+    if (isD2MultiAnio) aniosGraficar.forEach(anio => { promediosPorAnio[anio] = calcPromedioAnio(anio); });
+
     if (isD2MultiAnio) {
         // ── Modo AÑO: una barra apilada por año, promedio real ────
-        const promediosPorAnio = {};
-        aniosGraficar.forEach(anio => { promediosPorAnio[anio] = calcPromedioAnio(anio); });
 
         // Meta — punto por año, solo si tiene valor
         const metaMulti = labels.map(l => {
