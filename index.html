@@ -332,7 +332,8 @@ function procesarExcel(arrayBuffer) {
 const EXCEL_URL = 'historialdiariocarrostaller.xlsx';
 
 window.addEventListener('load', () => {
-    fetch(EXCEL_URL)
+    // Agregar timestamp para evitar caché del navegador y GitHub
+    fetch(EXCEL_URL + '?v=' + Date.now(), { cache: 'no-store' })
         .then(res => {
             if (!res.ok) throw new Error('No se encontró el archivo');
             return res.arrayBuffer();
