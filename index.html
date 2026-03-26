@@ -770,7 +770,8 @@ function render() {
                     const n = a.diasUnicos.size || 1;
                     return Math.round(isD1 ? a[c] : a[c] / n);
                 }),
-                backgroundColor: COLORS[c].bg, stack: 'stack1', order: 1
+                backgroundColor: COLORS[c].bg, stack: 'stack1', order: 1,
+                maxBarThickness: (isD2 && groupMode === 'AÑO') ? 80 : undefined
             });
         });
     }
@@ -813,7 +814,12 @@ function render() {
         options: {
             responsive: true, maintainAspectRatio: false,
             scales: {
-                x: { stacked: !isD2MultiAnio, ticks: { minRotation: isD1 ? 90 : 0 }, grid: { display: false } },
+                x: {
+                    stacked: !isD2MultiAnio,
+                    ticks: { minRotation: isD1 ? 90 : 0 },
+                    grid: { display: false },
+                    ...(isD2 && groupMode === 'AÑO' ? { categoryPercentage: 0.4, barPercentage: 0.7 } : {})
+                },
                 y: { stacked: !isD2MultiAnio, grid: { display: false }, max: yAxisMax, beginAtZero: true },
                 ySombra: {
                     display: false, stacked: false,
