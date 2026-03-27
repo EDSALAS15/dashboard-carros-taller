@@ -362,6 +362,8 @@ const COLORS = {
 const MESES_ORDEN = ["ENERO","FEBRERO","MARZO","ABRIL","MAYO","JUNIO","JULIO","AGOSTO","SEPTIEMBRE","OCTUBRE","NOVIEMBRE","DICIEMBRE"];
 
 document.addEventListener('click', (e) => {
+    // No cerrar el dropdown si el click fue en un checkbox o label dentro del dropdown
+    if (e.target.type === 'checkbox' || e.target.tagName === 'LABEL') return;
     const clickedInside = e.target.closest('.f-item');
     document.querySelectorAll('.dropdown-content').forEach(d => {
         if (!clickedInside || !clickedInside.contains(d)) d.classList.remove('open');
@@ -439,7 +441,7 @@ function buildFilters() {
         if(field === 'MES') opts.sort((a,b) => MESES_ORDEN.indexOf(a) - MESES_ORDEN.indexOf(b));
         else if(field === 'SEMANA' || field === 'AÑO') opts.sort((a,b) => Number(a)-Number(b));
         document.getElementById('opts'+field).innerHTML =
-            opts.map(o => `<label><input type="checkbox" value="${o}" onchange="handleFilterChange('${field}')"> ${o}</label>`).join('');
+            opts.map(o => `<label><input type="checkbox" value="${o}" onclick="handleFilterChange('${field}')"> ${o}</label>`).join('');
     });
 }
 
@@ -453,11 +455,17 @@ function updateUIFilters() {
     });
 }
 
-function handleFilterChange(field) {
+function handleFilterChange(field, checkboxEl) {
     let f = (currentDash === 1) ? filtersD1 : filtersD2;
-    if(field) {
-        f[field] = Array.from(document.querySelectorAll(`#opts${field} input:checked`)).map(i => i.value);
-        document.getElementById('ms'+field).innerText = f[field].length > 0 ? f[field].join(', ') : 'Todos...';
+    if (field) {
+        // Leer directamente del contenedor del dropdown para evitar
+        // problemas con el cierre del dropdown antes de procesar el cambio
+        const container = document.getElementById('opts' + field);
+        if (container) {
+            f[field] = Array.from(container.querySelectorAll('input:checked')).map(i => i.value);
+        }
+        const msEl = document.getElementById('ms' + field);
+        if (msEl) msEl.innerText = f[field].length > 0 ? f[field].join(', ') : 'Todos...';
     }
     f.sd = document.getElementById('dStart').value;
     f.ed = document.getElementById('dEnd').value;
@@ -469,7 +477,6 @@ function handleFilterChange(field) {
             f.sd = `${años[0]}-01-01`;
             f.ed = `${años[años.length-1]}-12-31`;
         } else {
-            // Sin año seleccionado, volver al rango por defecto (últimos 30 días)
             const dates = rawData.map(d => new Date(d.FECHA)).filter(d => !isNaN(d)).sort((a,b) => a-b);
             if (dates.length > 0) {
                 const last = dates[dates.length-1];
@@ -482,7 +489,7 @@ function handleFilterChange(field) {
         document.getElementById('dEnd').value   = f.ed;
     }
 
-    render();
+    setTimeout(render, 0);
 }
 
 // ── KPI helpers ──────────────────────────────────────────────────────
