@@ -566,305 +566,163 @@ function render() {
     const f    = (currentDash === 1) ? filtersD1 : filtersD2;
     const isD1 = (currentDash === 1);
     const isD2 = !isD1;
+    const modoAnio = isD2 && groupMode === 'AÑO';
 
-
-    // ── Columna de meta según ZONA ────────────────────────────────
+    // ── Columna de meta según ZONA ──────────────────────────────────
     let colMeta = 'META TOTAL';
     if (f.ZONA.length === 1) {
         const z = f.ZONA[0].toUpperCase();
-        if (z === 'LOCAL')   colMeta = 'META LOCAL';
-        else if (z === 'FORANEA') colMeta = 'META FORANEA';
+        if (z === 'LOCAL')    colMeta = 'META LOCAL';
+        if (z === 'FORANEA')  colMeta = 'META FORANEA';
     }
 
-    // ── Año base (para sombra del año anterior) ───────────────────
-    const todosAnios = rawData
-        .filter(d => {
-            if (f.AÑO.length > 0 && !f.AÑO.includes(String(d.AÑO))) return false;
-            if (isD1 && f.sd && f.ed) {
-                const dt = new Date(d.FECHA);
-                if (dt < new Date(f.sd+"T00:00:00") || dt > new Date(f.ed+"T23:59:59")) return false;
-            }
-            return true;
-        })
-        .map(d => Number(d.AÑO)).filter(y => y > 1900);
-    const anioBase  = todosAnios.length > 0
-        ? Math.max(...todosAnios)
-        : Math.max(...rawData.map(d => Number(d.AÑO)).filter(y => y > 1900));
-    const targetYear = anioBase - 1;
-
-    // ── Filtros comunes ───────────────────────────────────────────
+    // ── Filtro común (zona / división / tipo) ──────────────────────
     const passCommon = d =>
-        (f.ZONA.length     === 0 || f.ZONA.includes(String(d.ZONA)))     &&
+        (f.ZONA.length     === 0 || f.ZONA.includes(String(d.ZONA)))         &&
         (f.DIVISION.length === 0 || f.DIVISION.includes(String(d.DIVISION))) &&
         (f.TIPO.length     === 0 || f.TIPO.includes(String(d.TIPO)));
 
-    // ── Helper: construir mapa de un año ─────────────────────────
-    const buildMapaAnio = (anio, isPrev) => {
-        const mapa = {};
-        rawData.forEach(d => {
-            if (Number(d.AÑO) !== anio) return;
-            if (isD1) {
-                const dt = new Date(d.FECHA);
-                let sd, ed;
-                if (isPrev) {
-                    sd = new Date(f.sd+"T00:00:00"); sd.setFullYear(sd.getFullYear()-1);
-                    ed = new Date(f.ed+"T23:59:59"); ed.setFullYear(ed.getFullYear()-1);
-                } else {
-                    sd = new Date(f.sd+"T00:00:00");
-                    ed = new Date(f.ed+"T23:59:59");
-                }
-                if (dt < sd || dt > ed) return;
-            } else {
-                if (!isPrev) {
-                    if (f.MES.length    > 0 && !f.MES.includes(String(d.MES)))       return;
-                    if (f.SEMANA.length > 0 && !f.SEMANA.includes(String(d.SEMANA))) return;
-                } else {
-                    if (f.MES.length    > 0 && !f.MES.includes(String(d.MES)))       return;
-                    if (f.SEMANA.length > 0 && !f.SEMANA.includes(String(d.SEMANA))) return;
-                }
-            }
-            if (!passCommon(d)) return;
+    // ── Año base y año anterior ────────────────────────────────────
+    const aniosEnDatos = [...new Set(rawData.map(d => Number(d.AÑO)).filter(y => y > 1900))].sort((a,b) => a-b);
+    let anioBase;
+    if (f.AÑO.length > 0) {
+        anioBase = Math.max(...f.AÑO.map(Number));
+    } else {
+        anioBase = aniosEnDatos.length > 0 ? aniosEnDatos[aniosEnDatos.length - 1] : new Date().getFullYear();
+    }
+    const anioAnterior = anioBase - 1;
 
-            let key;
-            if (isD1) {
-                const dt = new Date(d.FECHA);
-                if (isPrev) dt.setFullYear(dt.getFullYear()+1);
-                key = dt.toLocaleDateString();
-            } else {
-                key = d[groupMode];
-            }
-            if (!key) return;
-
-            if (!mapa[key]) {
-                mapa[key] = { total:0, metaSum:0, metaCount:0, diasUnicos: new Set() };
-                CATEGORIES.forEach(c => mapa[key][c] = 0);
-            }
-            const node = mapa[key];
-            // Usar la fecha real del día para contar días únicos y promediar correctamente
-            const fechaReal = new Date(d.FECHA);
-            if (!isNaN(fechaReal)) node.diasUnicos.add(fechaReal.toISOString().split('T')[0]);
-            node.metaSum += Number(d[colMeta] || 0);
-            node.metaCount++;
-            CATEGORIES.forEach(c => {
-                const v = Number(d[c] || 0);
-                node[c]     += v;
-                node.total  += v;
-            });
-        });
-        return mapa;
-    };
-
-    // ── D2 modo AÑO → activo cuando groupMode es AÑO en D2 ─────────
-    const isD2MultiAnio = isD2 && groupMode === 'AÑO';
-
-    // ── D2 modo MES → siempre mostrar los 12 meses ───────────────
-    const isD2Mes = isD2 && groupMode === 'MES';
-
-    // ── Años a graficar en modo AÑO ───────────────────────────────
-    // Todos los años disponibles en los datos, o los seleccionados en el filtro
-    const todosAniosDisponibles = [...new Set(rawData.map(d => Number(d.AÑO)).filter(y => y > 1900))].sort((a,b) => a-b);
-    const aniosGraficar = isD2MultiAnio
-        ? (f.AÑO.length > 0 ? f.AÑO.map(Number).sort((a,b) => a-b) : todosAniosDisponibles)
+    // ── Años a graficar en modo AÑO ────────────────────────────────
+    const aniosGraficar = modoAnio
+        ? (f.AÑO.length > 0 ? f.AÑO.map(Number).sort((a,b) => a-b) : aniosEnDatos)
         : [];
 
-    // ── Función para calcular promedio anual por categoría ──────────
-    // Usa exactamente la misma lógica que buildMapaAnio en modo MES:
-    // agrupa por mes, promedia cada mes por días únicos, luego promedia los meses
-    const calcPromedioAnio = (anio) => {
-        // Reutilizar buildMapaAnio con groupMode forzado a MES
-        const savedGroupMode = groupMode;
-        // Construir mapa mes a mes para este año
+    // ── Helper: promedio de un año entero (para modo AÑO) ──────────
+    const calcAnio = (anio) => {
         const porMes = {};
         rawData.forEach(d => {
             if (Number(d.AÑO) !== anio) return;
             if (f.MES.length    > 0 && !f.MES.includes(String(d.MES)))       return;
             if (f.SEMANA.length > 0 && !f.SEMANA.includes(String(d.SEMANA))) return;
             if (!passCommon(d)) return;
-            const mes = d['MES'];
-            if (!mes) return;
-            if (!porMes[mes]) {
-                porMes[mes] = { total:0, metaSum:0, metaCount:0, diasUnicos: new Set() };
-                CATEGORIES.forEach(c => porMes[mes][c] = 0);
-            }
+            const mes = String(d.MES); if (!mes) return;
+            if (!porMes[mes]) { porMes[mes] = { total:0, metaSum:0, metaCount:0, dias: new Set() }; CATEGORIES.forEach(c => porMes[mes][c]=0); }
             const node = porMes[mes];
-            const fechaReal = new Date(d.FECHA);
-            if (!isNaN(fechaReal)) node.diasUnicos.add(fechaReal.toISOString().split('T')[0]);
-            node.metaSum += Number(d[colMeta] || 0);
-            node.metaCount++;
-            CATEGORIES.forEach(c => {
-                const v = Number(d[c] || 0);
-                node[c]    += v;
-                node.total += v;
-            });
+            const fr = new Date(d.FECHA); if (!isNaN(fr)) node.dias.add(fr.toISOString().split('T')[0]);
+            node.metaSum += Number(d[colMeta]||0); node.metaCount++;
+            CATEGORIES.forEach(c => { const v=Number(d[c]||0); node[c]+=v; node.total+=v; });
         });
-
         const meses = Object.values(porMes);
-        const empty = { total:0, metaPromedio:0 };
-        CATEGORIES.forEach(c => empty[c] = 0);
-        if (meses.length === 0) return empty;
-
-        // Promedio mensual de cada mes (igual que modo MES)
-        // Luego promedio de esos meses = promedio anual
-        const promediosMes = meses.map(node => {
-            const n = node.diasUnicos.size || 1;
-            // Meta: valor fijo del mes (mismo en todos los registros del mes), tomar el promedio
-            const metaVal = node.metaCount > 0 ? node.metaSum / node.metaCount : 0;
-            const pm = { total: node.total / n, metaPromedio: metaVal };
-            CATEGORIES.forEach(c => pm[c] = node[c] / n);
-            return pm;
+        if (!meses.length) { const e={total:0,meta:0}; CATEGORIES.forEach(c=>e[c]=0); return e; }
+        const sums = { total:0, meta:0 }; CATEGORIES.forEach(c => sums[c]=0);
+        let metaCnt=0;
+        meses.forEach(node => {
+            const n = node.dias.size || 1;
+            sums.total += node.total / n;
+            CATEGORIES.forEach(c => sums[c] += node[c] / n);
+            if (node.metaCount > 0) { sums.meta += node.metaSum / node.metaCount; metaCnt++; }
         });
-
-        const m = promediosMes.length;
-        const result = { total:0, metaPromedio:0 };
-        CATEGORIES.forEach(c => result[c] = 0);
-        let metaMeses = 0;
-        promediosMes.forEach(pm => {
-            result.total += pm.total;
-            if (pm.metaPromedio > 0) { result.metaPromedio += pm.metaPromedio; metaMeses++; }
-            CATEGORIES.forEach(c => result[c] += pm[c]);
-        });
-        result.total        = Math.round(result.total / m);
-        result.metaPromedio = metaMeses > 0 ? Math.round(result.metaPromedio / metaMeses) : 0;
-        CATEGORIES.forEach(c => result[c] = Math.round(result[c] / m));
-        return result;
+        const m = meses.length;
+        const res = { total: Math.round(sums.total/m), meta: metaCnt>0 ? Math.round(sums.meta/metaCnt) : 0 };
+        CATEGORIES.forEach(c => res[c] = Math.round(sums[c]/m));
+        return res;
     };
 
-    // ── Mapas principales (para modos no-AÑO) ─────────────────────
-    const actualMap = buildMapaAnio(anioBase, false);
-    const prevMap   = buildMapaAnio(targetYear, true);
+    // ── Helper: mapa para modos MES/SEMANA/D1 ─────────────────────
+    const buildMapa = (anio, isPrev) => {
+        const mapa = {};
+        rawData.forEach(d => {
+            if (Number(d.AÑO) !== anio) return;
+            if (isD1) {
+                const dt = new Date(d.FECHA);
+                let sd = new Date(f.sd+'T00:00:00'), ed = new Date(f.ed+'T23:59:59');
+                if (isPrev) { sd.setFullYear(sd.getFullYear()-1); ed.setFullYear(ed.getFullYear()-1); }
+                if (dt < sd || dt > ed) return;
+            } else {
+                if (f.MES.length    > 0 && !f.MES.includes(String(d.MES)))       return;
+                if (f.SEMANA.length > 0 && !f.SEMANA.includes(String(d.SEMANA))) return;
+            }
+            if (!passCommon(d)) return;
+            let key = isD1 ? (() => { const dt=new Date(d.FECHA); if(isPrev) dt.setFullYear(dt.getFullYear()+1); return dt.toLocaleDateString(); })() : d[groupMode];
+            if (!key) return;
+            if (!mapa[key]) { mapa[key]={total:0,metaSum:0,metaCount:0,diasUnicos:new Set()}; CATEGORIES.forEach(c=>mapa[key][c]=0); }
+            const node=mapa[key];
+            const fr=new Date(d.FECHA); if(!isNaN(fr)) node.diasUnicos.add(fr.toISOString().split('T')[0]);
+            node.metaSum+=Number(d[colMeta]||0); node.metaCount++;
+            CATEGORIES.forEach(c=>{ const v=Number(d[c]||0); node[c]+=v; node.total+=v; });
+        });
+        return mapa;
+    };
 
-    // ── Labels ───────────────────────────────────────────────────
-    let labels;
-    if (isD2MultiAnio) {
+    // ── Construir datos según modo ─────────────────────────────────
+    let labels, datasets = [], yMax = 0;
+
+    if (modoAnio) {
+        // Un label por año, promedio anual de cada categoría
+        const datosAnio = {};
+        aniosGraficar.forEach(a => { datosAnio[a] = calcAnio(a); });
         labels = aniosGraficar.map(String);
-    } else if (isD2Mes) {
-        labels = [...MESES_ORDEN];
-    } else if (isD1) {
-        labels = Object.keys(actualMap).sort((a,b) => {
-            const [da,ma,aa] = a.split('/'), [db,mb,ab] = b.split('/');
-            return new Date(+aa,+ma-1,+da) - new Date(+ab,+mb-1,+db);
-        });
-    } else {
-        labels = Object.keys(actualMap).sort((a,b) => Number(a)-Number(b));
-    }
 
-    // ── KPIs y título ────────────────────────────────────────────────────
-    updateKPIs(actualMap, prevMap, labels, isD1);
-    updateChartTitle(isD1, f, anioBase, groupMode);
-
-    // ── Construir datasets ────────────────────────────────────────
-    const datasets = [];
-
-    // Pre-calcular promedios por año (necesario también fuera del if para yMax)
-    const promediosPorAnio = {};
-    if (isD2MultiAnio) {
-        aniosGraficar.forEach(anio => { promediosPorAnio[anio] = calcPromedioAnio(anio); });
-    }
-
-    if (isD2MultiAnio) {
-        // ── Modo AÑO: una barra apilada por año, promedio real ────
-
-        // Meta — punto por año, solo si tiene valor
-        const metaMulti = labels.map(l => {
-            const p = promediosPorAnio[Number(l)];
-            return p && p.metaPromedio > 0 ? p.metaPromedio : null;
-        });
-        if (metaMulti.some(v => v !== null)) {
-            datasets.push({
-                label: 'Meta', type: 'line',
-                data: metaMulti,
-                borderColor: '#0071C1', borderWidth: 3, pointRadius: 5,
-                pointBackgroundColor: '#0071C1',
-                fill: false, order: 0, spanGaps: false,
-                yAxisID: 'y'
-            });
+        // Meta (solo si hay valores)
+        const metaVals = labels.map(l => { const d=datosAnio[Number(l)]; return d&&d.meta>0?d.meta:null; });
+        if (metaVals.some(v=>v!==null)) {
+            datasets.push({ label:'Meta', type:'line', data:metaVals,
+                borderColor:'#0071C1', borderWidth:3, pointRadius:5,
+                pointBackgroundColor:'#0071C1', fill:false, order:0, spanGaps:false });
         }
-
         // Barras apiladas por categoría
         CATEGORIES.forEach(c => {
-            datasets.push({
-                label: c, type: 'bar',
-                data: labels.map(l => {
-                    const p = promediosPorAnio[Number(l)];
-                    return p ? p[c] : 0;
-                }),
-                backgroundColor: COLORS[c].bg,
-                stack: 'stack1', order: 1,
-                maxBarThickness: 80
-            });
+            datasets.push({ label:c, type:'bar',
+                data: labels.map(l => { const d=datosAnio[Number(l)]; return d?d[c]:0; }),
+                backgroundColor:COLORS[c].bg, stack:'s1', order:1, maxBarThickness:80 });
         });
+        // yMax
+        aniosGraficar.forEach(a => { const d=datosAnio[a]; if(d&&d.total>yMax) yMax=d.total; });
+        const metaMax = metaVals.filter(v=>v!==null);
+        if (metaMax.length) yMax = Math.max(yMax, ...metaMax);
+
     } else {
-        // ── Modo normal: Meta + Sombra + Barras ───────────────────
-        const metaData = labels.map(l => {
-            const node = actualMap[l];
-            const v = node && node.metaCount > 0 ? Math.round(node.metaSum / node.metaCount) : 0;
-            return v > 0 ? v : null;   // null = no graficar ese punto
-        });
-        if (metaData.some(v => v !== null)) {
-            datasets.push({
-                label: 'Meta', type: 'line',
-                data: metaData,
-                borderColor: '#0071C1', borderWidth: 3, pointRadius: 0,
-                fill: false, order: 0,
-                spanGaps: false   // no unir puntos nulos con línea
-            });
+        // Modos normales: D1 diario, D2-MES, D2-SEMANA
+        const actualMap = buildMapa(anioBase, false);
+        const prevMap   = buildMapa(anioAnterior, true);
+
+        labels = isD1
+            ? Object.keys(actualMap).sort((a,b)=>{ const [da,ma,aa]=a.split('/'),[ db,mb,ab]=b.split('/'); return new Date(+aa,+ma-1,+da)-new Date(+ab,+mb-1,+db); })
+            : groupMode==='MES'
+                ? [...MESES_ORDEN]
+                : Object.keys(actualMap).sort((a,b)=>Number(a)-Number(b));
+
+        // Meta
+        const metaData = labels.map(l=>{ const n=actualMap[l]; const v=n&&n.metaCount>0?Math.round(n.metaSum/n.metaCount):0; return v>0?v:null; });
+        if (metaData.some(v=>v!==null)) {
+            datasets.push({ label:'Meta', type:'line', data:metaData,
+                borderColor:'#0071C1', borderWidth:3, pointRadius:0, fill:false, order:0, spanGaps:false });
         }
-
-        datasets.push({
-            label: 'Año Anterior', type: 'line',
-            data: labels.map(l => {
-                const p = prevMap[l];
-                if (!p) return 0;
-                const n = p.diasUnicos.size || 1;
-                return Math.round(isD1 ? p.total : p.total / n);
-            }),
-            yAxisID: 'ySombra',
-            fill: true, backgroundColor: 'rgba(180,180,180,0.4)',
-            borderColor: 'transparent', borderWidth: 0, pointRadius: 0, order: 2
-        });
-
+        // Sombra año anterior
+        datasets.push({ label:'Año Anterior', type:'line',
+            data: labels.map(l=>{ const p=prevMap[l]; if(!p) return 0; const n=p.diasUnicos.size||1; return Math.round(isD1?p.total:p.total/n); }),
+            yAxisID:'ySombra', fill:true, backgroundColor:'rgba(180,180,180,0.4)',
+            borderColor:'transparent', borderWidth:0, pointRadius:0, order:2 });
+        // Barras
         CATEGORIES.forEach(c => {
-            datasets.push({
-                label: c, type: 'bar',
-                data: labels.map(l => {
-                    const a = actualMap[l];
-                    if (!a) return 0;
-                    const n = a.diasUnicos.size || 1;
-                    return Math.round(isD1 ? a[c] : a[c] / n);
-                }),
-                backgroundColor: COLORS[c].bg, stack: 'stack1', order: 1,
-                maxBarThickness: (isD2 && groupMode === 'AÑO') ? 80 : undefined
-            });
+            datasets.push({ label:c, type:'bar',
+                data: labels.map(l=>{ const a=actualMap[l]; if(!a) return 0; const n=a.diasUnicos.size||1; return Math.round(isD1?a[c]:a[c]/n); }),
+                backgroundColor:COLORS[c].bg, stack:'s1', order:1 });
         });
+        // yMax
+        labels.forEach(l => {
+            const a=actualMap[l]; if(a){ const v=isD1?a.total:Math.round(a.total/(a.diasUnicos.size||1)); if(v>yMax) yMax=v; }
+            const p=prevMap[l];   if(p){ const v=isD1?p.total:Math.round(p.total/(p.diasUnicos.size||1)); if(v>yMax) yMax=v; }
+        });
+
+        // KPIs
+        updateKPIs(actualMap, prevMap, labels, isD1);
     }
 
-    // ── Calcular yMax considerando barras + sombra ────────────────
-    let yMax = 0;
-    labels.forEach(l => {
-        if (isD2MultiAnio) {
-            aniosGraficar.forEach(anio => {
-                const p = promediosPorAnio[anio];
-                if (p && p.total > yMax) yMax = p.total;
-            });
-        } else {
-            const a = actualMap[l];
-            if (a) {
-                const v = isD1 ? a.total : Math.round(a.total / (a.diasUnicos.size || 1));
-                if (v > yMax) yMax = v;
-            }
-            const p = prevMap[l];
-            if (p) {
-                const v = isD1 ? p.total : Math.round(p.total / (p.diasUnicos.size || 1));
-                if (v > yMax) yMax = v;
-            }
-        }
-    });
+    updateChartTitle(isD1, f, anioBase, groupMode);
     const yAxisMax = Math.ceil(yMax * 1.15) || 10;
 
-    // ── Filtro de leyenda ─────────────────────────────────────────
-    const legendFilter = i => i.text !== 'Año Anterior';
-
-    // Destruir chart anterior y reemplazar el canvas para evitar artefactos de Chart.js
+    // ── Recrear canvas y dibujar ───────────────────────────────────
     if (myChart) { myChart.destroy(); myChart = null; }
     const container = document.querySelector('.chart-container');
     const oldCanvas = document.getElementById('myChart');
@@ -872,25 +730,19 @@ function render() {
     const newCanvas = document.createElement('canvas');
     newCanvas.id = 'myChart';
     container.appendChild(newCanvas);
+
     myChart = new Chart(newCanvas, {
         data: { labels, datasets },
         options: {
             responsive: true, maintainAspectRatio: false,
             scales: {
-                x: {
-                    stacked: !isD2MultiAnio,
-                    ticks: { minRotation: isD1 ? 90 : 0 },
-                    grid: { display: false },
-                    ...(isD2 && groupMode === 'AÑO' ? { categoryPercentage: 0.4, barPercentage: 0.7 } : {})
-                },
-                y: { stacked: !isD2MultiAnio, grid: { display: false }, max: yAxisMax, beginAtZero: true },
-                ySombra: {
-                    display: false, stacked: false,
-                    beginAtZero: true, min: 0, max: yAxisMax
-                }
+                x: { stacked: true, ticks:{ minRotation: isD1?90:0 }, grid:{display:false},
+                     ...(modoAnio ? {categoryPercentage:0.4, barPercentage:0.7} : {}) },
+                y: { stacked: true, grid:{display:false}, max:yAxisMax, beginAtZero:true },
+                ySombra: { display:false, stacked:false, beginAtZero:true, min:0, max:yAxisMax }
             },
             plugins: {
-                legend: { position: 'bottom', labels: { filter: legendFilter } }
+                legend: { position:'bottom', labels:{ filter: i => i.text !== 'Año Anterior' } }
             }
         },
         plugins: [{
@@ -898,27 +750,24 @@ function render() {
                 const ctx = chart.ctx;
                 ctx.textAlign = 'center';
                 chart.data.labels.forEach((l, i) => {
-                    let totalVal = 0, topB = null;
-                    // Agrupar totales por stack
                     const stackTotals = {};
                     chart.data.datasets.forEach((ds, dsIdx) => {
                         if (ds.type !== 'bar') return;
                         const v = ds.data[i];
                         if (v > 0) {
                             const b = chart.getDatasetMeta(dsIdx).data[i];
-                            ctx.fillStyle = COLORS[ds.label.split(' ')[0]] ? COLORS[ds.label.split(' ')[0]].tx : (COLORS[ds.label] ? COLORS[ds.label].tx : '#000');
+                            ctx.fillStyle = COLORS[ds.label] ? COLORS[ds.label].tx : '#000';
                             ctx.font = 'bold 10px sans-serif';
                             ctx.fillText(v.toFixed(0), b.x, b.y + b.height/2 + 5);
-                            const stack = ds.stack || 'default';
-                            stackTotals[stack] = (stackTotals[stack] || { val:0, topB:null });
-                            stackTotals[stack].val += v;
-                            stackTotals[stack].topB = b;
+                            const st = ds.stack||'d';
+                            stackTotals[st] = stackTotals[st] || {val:0, topB:null};
+                            stackTotals[st].val  += v;
+                            stackTotals[st].topB  = b;
                         }
                     });
                     Object.values(stackTotals).forEach(st => {
                         if (st.topB && st.val > 0) {
-                            ctx.fillStyle = 'black';
-                            ctx.font = 'bold 11px sans-serif';
+                            ctx.fillStyle = 'black'; ctx.font = 'bold 11px sans-serif';
                             ctx.fillText(st.val.toFixed(0), st.topB.x, st.topB.y - 10);
                         }
                     });
