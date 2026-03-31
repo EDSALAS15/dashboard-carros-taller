@@ -176,6 +176,46 @@
         /* ── Gráfica ── */
         .chart-container { height: 450px; position: relative; margin-top: 10px; }
 
+        /* ── Tabla de datos ── */
+        .tabla-wrap {
+            margin-top: 18px; border-radius: 10px;
+            overflow: hidden; box-shadow: 0 2px 12px rgba(0,0,0,0.10);
+        }
+        .tabla-header {
+            display: flex; align-items: center; justify-content: space-between;
+            background: #333F48; color: #fff;
+            padding: 8px 14px; font-size: 11px; font-weight: 700;
+            text-transform: uppercase; letter-spacing: 0.5px;
+        }
+        .btn-download-tabla {
+            background: #00882B; color: #fff; border: none;
+            padding: 4px 12px; border-radius: 4px; cursor: pointer;
+            font-size: 10px; font-weight: 700; letter-spacing: 0.3px;
+        }
+        .btn-download-tabla:hover { background: #006820; }
+        .tabla-scroll { overflow-x: auto; max-height: 340px; overflow-y: auto; }
+        #tablaData { width: 100%; border-collapse: collapse; font-size: 11px; font-family: 'Segoe UI', sans-serif; }
+        #tablaData thead th {
+            background: #333F48; color: #fff; padding: 7px 12px;
+            text-align: center; white-space: nowrap; font-size: 10px;
+            font-weight: 700; letter-spacing: 0.3px;
+            position: sticky; top: 0; z-index: 2;
+            border-right: 1px solid #4a5a68;
+        }
+        #tablaData thead th:first-child { text-align: left; }
+        #tablaData tbody td {
+            padding: 6px 12px; border-bottom: 1px solid #eef0f3;
+            border-right: 1px solid #eef0f3; text-align: center;
+            white-space: nowrap; color: #2c2c2c;
+        }
+        #tablaData tbody td:first-child { text-align: left; font-weight: 600; background: #f4f6f8; position: sticky; left: 0; }
+        #tablaData tbody tr:hover td { background: #edf3ff; }
+        #tablaData tbody tr:hover td:first-child { background: #dce6f0; }
+        .td-cat { font-weight: 700; }
+        .td-total { font-weight: 800; color: #333F48; }
+        .td-meta { color: #0071C1; font-weight: 700; }
+        .td-prev { color: #888; font-style: italic; }
+
         /* ── Upload ── */
         #uploadArea {
             text-align: center; padding: 40px;
@@ -327,6 +367,20 @@
                 <!-- Gráfica -->
                 <div class="chart-container">
                     <canvas id="myChart"></canvas>
+                </div>
+
+                <!-- Tabla de datos -->
+                <div class="tabla-wrap" id="tablaWrap" style="display:none;">
+                    <div class="tabla-header">
+                        <span id="tablaTitulo">Datos de la gráfica</span>
+                        <button class="btn-download-tabla" onclick="descargarTablaExcel()">⬇ Descargar Excel</button>
+                    </div>
+                    <div class="tabla-scroll">
+                        <table id="tablaData">
+                            <thead id="tablaHead"></thead>
+                            <tbody id="tablaBody"></tbody>
+                        </table>
+                    </div>
                 </div>
 
             </div><!-- /mainUI -->
@@ -775,6 +829,104 @@ function render() {
             }
         }]
     });
+}
+
+// ── Tabla de datos ─────────────────────────────────────────────────
+let _tablaLabels = [];
+let _tablaDatasets = [];
+
+function buildTabla(labels, datasets, titulo) {
+    _tablaLabels   = labels;
+    _tablaDatasets = datasets;
+
+    const wrap  = document.getElementById('tablaWrap');
+    const thead = document.getElementById('tablaHead');
+    const tbody = document.getElementById('tablaBody');
+    const tit   = document.getElementById('tablaTitulo');
+    if (!wrap) return;
+
+    tit.textContent = titulo || 'Datos de la gráfica';
+    wrap.style.display = 'block';
+
+    // Columnas: Categoría + un th por label
+    const headerCells = labels.map(l => `<th>${l}</th>`).join('');
+    thead.innerHTML = `<tr><th>Categoría</th>${headerCells}</tr>`;
+
+    // Filas: una por dataset de tipo barra + totales + meta + sombra
+    const barDS  = datasets.filter(ds => ds.type === 'bar');
+    const metaDS = datasets.find(ds => ds.label === 'Meta' || ds.label?.startsWith('Meta '));
+    const prevDS = datasets.find(ds => ds.label === 'Año Anterior');
+
+    const rows = [];
+
+    // Filas de categorías
+    barDS.forEach(ds => {
+        const cells = labels.map((l, i) => {
+            const v = ds.data[i] || 0;
+            return `<td class="td-cat" style="background:${ds.backgroundColor}22; color:${ds.backgroundColor === '#FFFF00' ? '#555' : ds.backgroundColor};">${v > 0 ? v : '—'}</td>`;
+        }).join('');
+        rows.push(`<tr><td>${ds.label}</td>${cells}</tr>`);
+    });
+
+    // Fila total
+    if (barDS.length > 0) {
+        const totalCells = labels.map((l, i) => {
+            const sum = barDS.reduce((acc, ds) => acc + (ds.data[i] || 0), 0);
+            return `<td class="td-total">${sum > 0 ? sum : '—'}</td>`;
+        }).join('');
+        rows.push(`<tr style="border-top:2px solid #333F48;"><td style="background:#333F48;color:#fff;">TOTAL</td>${totalCells}</tr>`);
+    }
+
+    // Fila meta
+    if (metaDS) {
+        const metaCells = labels.map((l, i) => {
+            const v = metaDS.data[i];
+            return `<td class="td-meta">${v != null && v > 0 ? v : '—'}</td>`;
+        }).join('');
+        rows.push(`<tr><td style="color:#0071C1;font-weight:700;">META</td>${metaCells}</tr>`);
+    }
+
+    // Fila año anterior
+    if (prevDS) {
+        const prevCells = labels.map((l, i) => {
+            const v = prevDS.data[i] || 0;
+            return `<td class="td-prev">${v > 0 ? v : '—'}</td>`;
+        }).join('');
+        rows.push(`<tr><td style="color:#888;font-style:italic;">AÑO ANTERIOR</td>${prevCells}</tr>`);
+    }
+
+    tbody.innerHTML = rows.join('');
+}
+
+function descargarTablaExcel() {
+    const tabla = document.getElementById('tablaData');
+    if (!tabla) return;
+
+    const rows = [...tabla.querySelectorAll('tr')];
+    const csv  = rows.map(r =>
+        [...r.querySelectorAll('th, td')]
+            .map(c => '"' + c.textContent.trim().replace(/"/g, '""') + '"')
+            .join(',')
+    ).join('
+');
+
+    const bom  = '﻿';
+    const blob = new Blob([bom + csv], { type: 'text/csv;charset=utf-8;' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    const tit  = document.getElementById('tablaTitulo')?.textContent || 'datos';
+    a.download = tit.replace(/[^a-zA-Z0-9_\-]/g, '_') + '.csv';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    // ── Construir tabla debajo de la gráfica ─────────────────────
+    const tituloTabla = (currentDash === 1)
+        ? 'Dashboard 1: Cantidad Diaria'
+        : `Dashboard 2: Promedio por ${groupMode}`;
+    buildTabla(labels, datasets, tituloTabla);
 }
 
 function changeDash(n) {
