@@ -176,6 +176,44 @@
         /* ── Gráfica ── */
         .chart-container { height: 450px; position: relative; margin-top: 10px; }
 
+        /* ── Tabla ── */
+        .tabla-wrap { margin-top: 20px; }
+        .tabla-toolbar {
+            display: flex; align-items: center; justify-content: space-between;
+            background: #333F48; color: #fff; padding: 8px 14px;
+            border-radius: 8px 8px 0 0; font-size: 11px; font-weight: 700;
+        }
+        .btn-dl {
+            background: #00882B; color: #fff; border: none;
+            padding: 4px 14px; border-radius: 4px; cursor: pointer;
+            font-size: 10px; font-weight: 700;
+        }
+        .btn-dl:hover { background: #006820; }
+        .tabla-scroll { overflow-x: auto; max-height: 320px; overflow-y: auto; }
+        #tbl { width: 100%; border-collapse: collapse; font-size: 11px; }
+        #tbl thead th {
+            background: #333F48; color: #fff; padding: 6px 10px;
+            text-align: center; white-space: nowrap; font-size: 10px;
+            position: sticky; top: 0; z-index: 2; border-right: 1px solid #4a5a68;
+        }
+        #tbl thead th:first-child { text-align: left; min-width: 90px; }
+        #tbl tbody td {
+            padding: 5px 10px; border-bottom: 1px solid #eee;
+            border-right: 1px solid #eee; text-align: center; white-space: nowrap;
+        }
+        #tbl tbody td:first-child {
+            text-align: left; font-weight: 700; background: #f4f6f8;
+            position: sticky; left: 0;
+        }
+        #tbl tbody tr:hover td { background: #edf3ff; }
+        #tbl tbody tr:hover td:first-child { background: #dce6f0; }
+        #tbl tfoot td {
+            padding: 6px 10px; font-weight: 800; text-align: center;
+            border-top: 2px solid #333F48; border-right: 1px solid #eee;
+            background: #f0f2f4; white-space: nowrap;
+        }
+        #tbl tfoot td:first-child { text-align: left; background: #333F48; color: #fff; }
+
         /* ── Upload ── */
         #uploadArea {
             text-align: center; padding: 40px;
@@ -327,6 +365,21 @@
                 <!-- Gráfica -->
                 <div class="chart-container">
                     <canvas id="myChart"></canvas>
+                </div>
+
+                <!-- Tabla -->
+                <div class="tabla-wrap" id="tablaWrap" style="display:none;">
+                    <div class="tabla-toolbar">
+                        <span id="tblTitulo">Datos</span>
+                        <button class="btn-dl" onclick="descargarCSV()">⬇ Descargar Excel</button>
+                    </div>
+                    <div class="tabla-scroll">
+                        <table id="tbl">
+                            <thead id="tblHead"></thead>
+                            <tbody id="tblBody"></tbody>
+                            <tfoot id="tblFoot"></tfoot>
+                        </table>
+                    </div>
                 </div>
 
             </div><!-- /mainUI -->
@@ -775,6 +828,64 @@ function render() {
             }
         }]
     });
+}
+
+// ── Tabla ──────────────────────────────────────────────────────────
+function buildTabla(labels, datasets) {
+    const wrap  = document.getElementById('tablaWrap');
+    const thead = document.getElementById('tblHead');
+    const tbody = document.getElementById('tblBody');
+    const tfoot = document.getElementById('tblFoot');
+    const tit   = document.getElementById('tblTitulo');
+    if (!wrap) return;
+
+    const dash  = currentDash === 1 ? 'Dashboard 1: Cantidad Diaria' : 'Dashboard 2: Promedio por ' + groupMode;
+    tit.textContent = dash;
+    wrap.style.display = 'block';
+
+    const barDS  = datasets.filter(ds => ds.type === 'bar');
+    const metaDS = datasets.find(ds => ds.label === 'Meta');
+    const prevDS = datasets.find(ds => ds.label === 'Año Anterior');
+
+    // Cabecera
+    thead.innerHTML = '<tr><th>Categoría</th>' + labels.map(l => `<th>${l}</th>`).join('') + '</tr>';
+
+    // Filas de categorías
+    tbody.innerHTML = barDS.map(ds => {
+        const bg  = ds.backgroundColor || '#ccc';
+        const tx  = COLORS[ds.label] ? COLORS[ds.label].tx : '#000';
+        const celdas = labels.map((l, i) => {
+            const v = ds.data[i] || 0;
+            return `<td style="background:${bg};color:${tx};font-weight:700;">${v > 0 ? v : '—'}</td>`;
+        }).join('');
+        return `<tr><td>${ds.label}</td>${celdas}</tr>`;
+    }).join('')
+    + (metaDS ? '<tr><td style="color:#0071C1;">META</td>' + labels.map((l,i) => {
+        const v = metaDS.data[i]; return `<td style="color:#0071C1;font-weight:700;">${v != null && v > 0 ? v : '—'}</td>`;
+    }).join('') + '</tr>' : '')
+    + (prevDS ? '<tr><td style="color:#888;font-style:italic;">AÑO ANTERIOR</td>' + labels.map((l,i) => {
+        const v = prevDS.data[i] || 0; return `<td style="color:#888;">${v > 0 ? v : '—'}</td>`;
+    }).join('') + '</tr>' : '');
+
+    // Pie: totales de barras
+    const totales = labels.map((l, i) => barDS.reduce((s, ds) => s + (ds.data[i] || 0), 0));
+    tfoot.innerHTML = '<tr><td>TOTAL</td>' + totales.map(v => `<td>${v > 0 ? v : '—'}</td>`).join('') + '</tr>';
+}
+
+function descargarCSV() {
+    const tbl = document.getElementById('tbl');
+    if (!tbl) return;
+    const rows = [...tbl.querySelectorAll('tr')];
+    const csv  = '﻿' + rows.map(r =>
+        [...r.querySelectorAll('th,td')].map(c => '"' + c.textContent.trim().replace(/"/g,'""') + '"').join(',')
+    ).join('
+');
+    const a = document.createElement('a');
+    a.href     = URL.createObjectURL(new Blob([csv], {type:'text/csv;charset=utf-8;'}));
+    a.download = (document.getElementById('tblTitulo')?.textContent || 'datos').replace(/[^a-z0-9]/gi,'_') + '.csv';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+
+    buildTabla(labels, datasets);
 }
 
 function changeDash(n) {
