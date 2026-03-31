@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <title>Dashboard Carros Taller</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js" defer></script>
+    
+    
     <style>
         :root {
             --rojo: #C10230;
@@ -452,8 +452,7 @@ function procesarExcel(arrayBuffer) {
 // ── Carga automática desde el repositorio ───────────────────────
 const EXCEL_URL = 'historialdiariocarrostaller.xlsx';
 
-window.addEventListener('load', () => {
-    // Agregar timestamp para evitar caché del navegador y GitHub
+function iniciarCargaExcel() {
     fetch(EXCEL_URL + '?v=' + Date.now(), { cache: 'no-store' })
         .then(res => {
             if (!res.ok) throw new Error('No se encontró el archivo');
@@ -463,11 +462,23 @@ window.addEventListener('load', () => {
             procesarExcel(buffer);
         })
         .catch(() => {
-            // Si falla la carga automática, mostrar carga manual
             document.getElementById('autoLoadMsg').style.display = 'none';
             document.getElementById('manualLoad').style.display  = 'block';
         });
-});
+}
+
+// Esperar a que XLSX y Chart.js estén disponibles antes de cargar
+function esperarLibrerias(intentos) {
+    if (typeof XLSX !== 'undefined' && typeof Chart !== 'undefined') {
+        iniciarCargaExcel();
+    } else if (intentos > 0) {
+        setTimeout(() => esperarLibrerias(intentos - 1), 100);
+    } else {
+        document.getElementById('autoLoadMsg').innerText = 'Error cargando librerías. Recarga la página.';
+    }
+}
+
+window.addEventListener('load', () => esperarLibrerias(50));
 
 // ── Carga manual (respaldo) ──────────────────────────────────────
 document.addEventListener('change', (e) => {
@@ -954,5 +965,7 @@ function resetAll() {
     render();
 }
 </script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </body>
 </html>
