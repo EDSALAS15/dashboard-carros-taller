@@ -736,10 +736,32 @@ function render() {
             data: labels.map(l=>{ const p=prevMap[l]; if(!p) return 0; const n=p.diasUnicos.size||1; return Math.round(isD1?p.total:p.total/n); }),
             yAxisID:'ySombra', fill:true, backgroundColor:'rgba(180,180,180,0.4)',
             borderColor:'transparent', borderWidth:0, pointRadius:0, order:2 });
-        // Barras
+        // Barras — calcular totales exactos por label primero, luego distribuir
+        // para que la suma de categorías = Math.round(total/n) exactamente
+        const barData = {};
+        CATEGORIES.forEach(c => { barData[c] = []; });
+        labels.forEach(l => {
+            const a = actualMap[l];
+            if (!a) { CATEGORIES.forEach(c => barData[c].push(0)); return; }
+            const n = a.diasUnicos.size || 1;
+            const totalExacto = Math.round(isD1 ? a.total : a.total / n);
+            // Calcular cada categoría sin redondear
+            const vals = CATEGORIES.map(c => isD1 ? a[c] : a[c] / n);
+            const sumaExacta = vals.reduce((s,v) => s+v, 0);
+            if (sumaExacta === 0) { CATEGORIES.forEach(c => barData[c].push(0)); return; }
+            // Escalar proporcionalmente para que sumen totalExacto
+            const factor = totalExacto / sumaExacta;
+            // Usar largest remainder method para redondeo exacto
+            const floats  = vals.map(v => v * factor);
+            const floors  = floats.map(v => Math.floor(v));
+            const sumaFloors = floors.reduce((s,v) => s+v, 0);
+            let resto = totalExacto - sumaFloors;
+            const restos = floats.map((v,i) => ({i, r: v - floors[i]})).sort((a,b) => b.r - a.r);
+            restos.forEach(({i}) => { if (resto > 0) { floors[i]++; resto--; } });
+            CATEGORIES.forEach((c, ci) => barData[c].push(floors[ci]));
+        });
         CATEGORIES.forEach(c => {
-            datasets.push({ label:c, type:'bar',
-                data: labels.map(l=>{ const a=actualMap[l]; if(!a) return 0; const n=a.diasUnicos.size||1; return Math.round(isD1?a[c]:a[c]/n); }),
+            datasets.push({ label:c, type:'bar', data:barData[c],
                 backgroundColor:COLORS[c].bg, stack:'s1', order:1 });
         });
         // yMax
