@@ -543,11 +543,13 @@ function updateKPIs(actualMap, prevMap, labels, isD1) {
         const a = actualMap[l];
         if (!a) return;
         const n = a.diasUnicos.size || 1;
-        const v = isD1 ? a.total : Math.round(a.total / n);
-        if (v > 0) {
-            sumActual += v; countActual++;
-            if (v > maxVal) maxVal = v;
-            if (v < minVal) minVal = v;
+        // Usar la misma operación que la gráfica para consistencia
+        const v = isD1 ? a.total : (a.total / n);
+        const vRedondeado = Math.round(v);
+        if (vRedondeado > 0) {
+            sumActual += vRedondeado; countActual++;
+            if (vRedondeado > maxVal) maxVal = vRedondeado;
+            if (vRedondeado < minVal) minVal = vRedondeado;
         }
     });
     const promActual = countActual > 0 ? Math.round(sumActual / countActual) : 0;
@@ -851,22 +853,38 @@ function buildTabla(labels, datasets) {
 
     thead.innerHTML = '<tr><th>Categoría</th>' + labels.map(l => '<th>' + l + '</th>').join('') + '</tr>';
 
+    // Determinar qué columnas tienen al menos un valor en las barras (para no mostrar AÑO ANTERIOR en cols sin datos)
+    const colConDatos = labels.map((l,i) => barDS.some(ds => (ds.data[i]||0) > 0));
+
     let filas = barDS.map(ds => {
         const bg = ds.backgroundColor || '#ccc';
         const tx = (COLORS[ds.label] || {tx:'#000'}).tx;
         return '<tr><td>' + ds.label + '</td>' +
-            labels.map((l,i) => { const v = ds.data[i]||0; return '<td style="background:'+bg+';color:'+tx+';font-weight:700;">'+(v>0?v:'—')+'</td>'; }).join('') +
-        '</tr>';
+            labels.map((l,i) => {
+                const v = ds.data[i]||0;
+                return '<td style="background:'+bg+';color:'+tx+';font-weight:700;">'+(v>0?v:'')+'</td>';
+            }).join('') + '</tr>';
     }).join('');
 
     if (metaDS) filas += '<tr><td style="color:#0071C1;">META</td>' +
-        labels.map((l,i) => { const v=metaDS.data[i]; return '<td style="color:#0071C1;font-weight:700;">'+(v!=null&&v>0?v:'—')+'</td>'; }).join('') + '</tr>';
+        labels.map((l,i) => {
+            const v=metaDS.data[i];
+            return '<td style="color:#0071C1;font-weight:700;">'+(v!=null&&v>0?v:'')+'</td>';
+        }).join('') + '</tr>';
+
+    // AÑO ANTERIOR: solo mostrar en columnas que tienen datos en el año actual
     if (prevDS) filas += '<tr><td style="color:#888;font-style:italic;">AÑO ANTERIOR</td>' +
-        labels.map((l,i) => { const v=prevDS.data[i]||0; return '<td style="color:#888;">'+(v>0?v:'—')+'</td>'; }).join('') + '</tr>';
+        labels.map((l,i) => {
+            const v=prevDS.data[i]||0;
+            return '<td style="color:#888;">'+(colConDatos[i] && v>0 ? v : '')+'</td>';
+        }).join('') + '</tr>';
 
     tbody.innerHTML = filas;
     tfoot.innerHTML = '<tr><td>TOTAL</td>' +
-        labels.map((l,i) => { const s=barDS.reduce((a,ds)=>a+(ds.data[i]||0),0); return '<td>'+(s>0?s:'—')+'</td>'; }).join('') + '</tr>';
+        labels.map((l,i) => {
+            const s=barDS.reduce((a,ds)=>a+(ds.data[i]||0),0);
+            return '<td>'+(s>0?s:'')+'</td>';
+        }).join('') + '</tr>';
 }
 
 function descargarCSV() {
