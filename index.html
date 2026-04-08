@@ -312,7 +312,7 @@
                         <div class="kpi-sub"   id="kpiVarSub"></div>
                     </div>
                     <div class="kpi-card">
-                        <div class="kpi-label">Año anterior mismo periodo</div>
+                        <div class="kpi-label">Promedio mismo periodo año anterior</div>
                         <div class="kpi-value" id="kpiMes">—</div>
                         <div class="kpi-sub"   id="kpiMesSub"></div>
                     </div>
@@ -530,7 +530,7 @@ function makeDelta(pct) {
     return `<span class="kpi-delta ${cls}">${arrow} ${Math.abs(pct).toFixed(1)}%</span>`;
 }
 
-function updateKPIs(actualMap, prevMap, labels, isD1) {
+function updateKPIs(actualMap, prevMap, labels, isD1, f, anioBase) {
     const kpiRow    = document.getElementById('kpiRow');
     const chartTitle = document.getElementById('chartTitle');
     if (!kpiRow) return;
@@ -565,9 +565,35 @@ function updateKPIs(actualMap, prevMap, labels, isD1) {
     const promPrev = countPrev > 0 ? Math.round(sumPrev / countPrev) : 0;
     const varPct   = promPrev > 0 ? ((promActual - promPrev) / promPrev) * 100 : 0;
 
+    // Texto del periodo
+    let periodoSub;
+    if (isD1 && f.sd && f.ed) {
+        const fmtDate = s => { const [y,m,d] = s.split('-'); return d+'/'+m+'/'+y; };
+        periodoSub = fmtDate(f.sd) + ' — ' + fmtDate(f.ed);
+    } else {
+        const añosSel = f.AÑO.length > 0 ? f.AÑO.join(', ') : String(anioBase);
+        periodoSub = !isD1 ? 'Año ' + añosSel + (f.MES.length > 0 ? ' · ' + f.MES.join(', ') : '') : 'Año ' + anioBase;
+    }
+    const añoAnt = anioBase - 1;
+    const periodoAntSub = isD1 && f.sd && f.ed
+        ? 'Año ' + añoAnt + ' mismo período'
+        : 'Año ' + añoAnt + (f.MES.length > 0 ? ' · ' + f.MES.join(', ') : '');
+
+    // Encontrar fecha del máximo y mínimo (solo D1)
+    let labelMax = '', labelMin = '';
+    if (isD1) {
+        labels.forEach(l => {
+            const a = actualMap[l]; if (!a) return;
+            const v = a.total;
+            if (v === maxVal) labelMax = l;
+            if (v === minVal) labelMin = l;
+        });
+    }
+    const fmtLabel = l => { const parts = l.split('/'); return parts.length === 3 ? parts[0]+'/'+parts[1]+'/'+parts[2] : l; };
+
     // Tarjeta 1: Promedio del periodo actual
     document.getElementById('kpiAcum').textContent    = promActual.toLocaleString('es-MX');
-    document.getElementById('kpiAcumSub').textContent = isD1 ? 'Promedio diario del período' : 'Promedio del período seleccionado';
+    document.getElementById('kpiAcumSub').textContent = periodoSub;
 
     // Tarjeta 2: Variación vs año anterior
     document.getElementById('kpiVar').innerHTML       = makeDelta(varPct);
@@ -575,13 +601,13 @@ function updateKPIs(actualMap, prevMap, labels, isD1) {
 
     // Tarjeta 3: Promedio año anterior del mismo periodo
     document.getElementById('kpiMes').textContent     = promPrev.toLocaleString('es-MX');
-    document.getElementById('kpiMesSub').textContent  = isD1 ? 'Promedio diario año anterior' : 'Año anterior mismo período';
+    document.getElementById('kpiMesSub').textContent  = periodoAntSub;
 
-    // Tarjeta 4 y 5: Máximo y Mínimo
+    // Tarjeta 4 y 5: Máximo y Mínimo con fecha
     document.getElementById('kpiBest').textContent    = maxVal.toLocaleString('es-MX');
-    document.getElementById('kpiBestSub').textContent = 'Máximo del período';
+    document.getElementById('kpiBestSub').textContent = isD1 && labelMax ? 'Fecha: ' + fmtLabel(labelMax) : 'Máximo del período';
     document.getElementById('kpiMin').textContent     = minVal.toLocaleString('es-MX');
-    document.getElementById('kpiMinSub').textContent  = 'Mínimo del período';
+    document.getElementById('kpiMinSub').textContent  = isD1 && labelMin ? 'Fecha: ' + fmtLabel(labelMin) : 'Mínimo del período';
 
     // Tarjeta 6: Variación vs Meta (promedio meta del periodo)
     let metaSum = 0, metaCount = 0;
@@ -765,7 +791,7 @@ function render() {
         });
 
         // KPIs
-        updateKPIs(actualMap, prevMap, labels, isD1);
+        updateKPIs(actualMap, prevMap, labels, isD1, f, anioBase);
     }
 
     updateChartTitle(isD1, f, anioBase, groupMode);
@@ -876,11 +902,12 @@ function buildTabla(labels, datasets) {
             }).join('') + '</tr>';
     }).join('');
 
-    // TOTAL justo después de las barras
-    const totalRow = '<tr style="border-top:2px solid #333F48;"><td style="background:#333F48;color:#fff;font-weight:800;">TOTAL</td>' +
+    // TOTAL justo después de las barras — fondo #333F48, letra blanca, negritas
+    const totalRow = '<tr style="border-top:2px solid #333F48;">' +
+        '<td style="background:#333F48;color:#fff;font-weight:800;">TOTAL</td>' +
         labels.map((l,i) => {
             const s=barDS.reduce((a,ds)=>a+(ds.data[i]||0),0);
-            return '<td style="font-weight:800;">'+(s>0?s:'')+'</td>';
+            return '<td style="background:#333F48;color:#fff;font-weight:800;">'+(s>0?s:'')+'</td>';
         }).join('') + '</tr>';
 
     // META después de TOTAL
