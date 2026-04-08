@@ -162,10 +162,10 @@
         .kpi-label { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; color: #999; width: 100%; }
         .kpi-value { font-size: 22px; font-weight: 800; color: #333F48; line-height: 1; flex: 1; display: flex; align-items: center; justify-content: center; width: 100%; }
         .kpi-sub   { font-size: 10px; color: #888; text-align: center; width: 100%; }
-        .kpi-delta { display: inline-flex; align-items: center; gap: 3px; font-size: 11px; font-weight: 700; padding: 2px 6px; border-radius: 20px; width: fit-content; }
-        .kpi-delta.up   { background: #e8f5e9; color: #2e7d32; }
-        .kpi-delta.down { background: #fdecea; color: #c62828; }
-        .kpi-delta.flat { background: #f5f5f5; color: #757575; }
+        .kpi-delta { display: inline-flex; align-items: center; gap: 3px; font-size: 22px; font-weight: 800; width: fit-content; }
+        .kpi-delta.up   { color: #FF0000; }
+        .kpi-delta.down { color: #00B050; }
+        .kpi-delta.flat { color: #757575; }
 
         /* ── Título de gráfica ── */
         .chart-title { font-size: 13px; font-weight: 700; color: #333; margin-bottom: 6px; padding-left: 2px; display: flex; align-items: center; gap: 8px; }
@@ -750,7 +750,8 @@ function render() {
         datasets.push({ label:'Año Anterior', type:'line',
             data: labels.map(l=>{ const p=prevMap[l]; if(!p) return 0; const n=p.diasUnicos.size||1; return Math.round(isD1?p.total:p.total/n); }),
             yAxisID:'ySombra', fill:true, backgroundColor:'rgba(180,180,180,0.4)',
-            borderColor:'transparent', borderWidth:0, pointRadius:0, order:2 });
+            borderColor:'rgba(180,180,180,0.01)', borderWidth:1,
+            pointRadius:0, pointHitRadius:20, order:2 });
         // Barras
         CATEGORIES.forEach(c => {
             datasets.push({ label:c, type:'bar',
@@ -792,11 +793,19 @@ function render() {
             plugins: {
                 legend: { position:'bottom', labels:{ filter: i => i.text !== 'Año Anterior' } },
                 tooltip: {
+                    mode: 'index',
+                    intersect: false,
+                    filter: ctx => {
+                        // Mostrar barras y también Año Anterior (sombra)
+                        if (ctx.dataset.type === 'bar') return ctx.raw > 0;
+                        if (ctx.dataset.label === 'Año Anterior') return ctx.raw > 0;
+                        if (ctx.dataset.label === 'Meta') return ctx.raw > 0;
+                        return false;
+                    },
                     callbacks: {
                         label: ctx => {
-                            if (ctx.dataset.label === 'Año Anterior') {
-                                return ' Año Anterior: ' + ctx.raw;
-                            }
+                            if (ctx.dataset.label === 'Año Anterior') return ' ▓ Año Anterior: ' + ctx.raw;
+                            if (ctx.dataset.label === 'Meta') return ' ─ Meta: ' + ctx.raw;
                             return ' ' + ctx.dataset.label + ': ' + ctx.raw;
                         }
                     }
