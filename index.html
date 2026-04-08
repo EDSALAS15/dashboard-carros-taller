@@ -530,7 +530,7 @@ function makeDelta(pct) {
     return `<span class="kpi-delta ${cls}">${arrow} ${Math.abs(pct).toFixed(1)}%</span>`;
 }
 
-function updateKPIs(actualMap, prevMap, labels, isD1) {
+function updateKPIs(actualMap, prevMap, labels, isD1, f, anioBase) {
     const kpiRow    = document.getElementById('kpiRow');
     const chartTitle = document.getElementById('chartTitle');
     if (!kpiRow) return;
@@ -565,23 +565,36 @@ function updateKPIs(actualMap, prevMap, labels, isD1) {
     const promPrev = countPrev > 0 ? Math.round(sumPrev / countPrev) : 0;
     const varPct   = promPrev > 0 ? ((promActual - promPrev) / promPrev) * 100 : 0;
 
+    // Texto del periodo para los subs
+    let periodoText;
+    if (isD1) {
+        periodoText = (f.sd && f.ed) ? f.sd + ' → ' + f.ed : 'Año ' + anioBase;
+    } else {
+        const añosSel = f.AÑO.length > 0 ? f.AÑO.join(', ') : String(anioBase);
+        const mesesSel = f.MES.length > 0 ? ' · ' + f.MES.join(', ') : '';
+        periodoText = 'Año ' + añosSel + mesesSel;
+    }
+    const periodoAnterior = isD1
+        ? ((f.sd && f.ed) ? (new Date(f.sd).getFullYear()-1) + ' mismo período' : 'Año ' + (anioBase-1))
+        : 'Año ' + (anioBase-1) + ' mismo período';
+
     // Tarjeta 1: Promedio del periodo actual
     document.getElementById('kpiAcum').textContent    = promActual.toLocaleString('es-MX');
-    document.getElementById('kpiAcumSub').textContent = isD1 ? 'Promedio diario del período' : 'Promedio del período seleccionado';
+    document.getElementById('kpiAcumSub').textContent = periodoText;
 
     // Tarjeta 2: Variación vs año anterior
     document.getElementById('kpiVar').innerHTML       = makeDelta(varPct);
-    document.getElementById('kpiVarSub').textContent  = 'vs año anterior mismo período';
+    document.getElementById('kpiVarSub').textContent  = periodoText + ' vs ' + periodoAnterior;
 
     // Tarjeta 3: Promedio año anterior del mismo periodo
     document.getElementById('kpiMes').textContent     = promPrev.toLocaleString('es-MX');
-    document.getElementById('kpiMesSub').textContent  = isD1 ? 'Promedio diario año anterior' : 'Año anterior mismo período';
+    document.getElementById('kpiMesSub').textContent  = periodoAnterior;
 
     // Tarjeta 4 y 5: Máximo y Mínimo
     document.getElementById('kpiBest').textContent    = maxVal.toLocaleString('es-MX');
-    document.getElementById('kpiBestSub').textContent = 'Máximo del período';
+    document.getElementById('kpiBestSub').textContent = 'Máximo · ' + periodoText;
     document.getElementById('kpiMin').textContent     = minVal.toLocaleString('es-MX');
-    document.getElementById('kpiMinSub').textContent  = 'Mínimo del período';
+    document.getElementById('kpiMinSub').textContent  = 'Mínimo · ' + periodoText;
 
     // Tarjeta 6: Variación vs Meta (promedio meta del periodo)
     let metaSum = 0, metaCount = 0;
@@ -592,7 +605,7 @@ function updateKPIs(actualMap, prevMap, labels, isD1) {
     const promMeta = metaCount > 0 ? Math.round(metaSum / metaCount) : 0;
     const varMeta  = promMeta > 0 ? ((promActual - promMeta) / promMeta) * 100 : 0;
     document.getElementById('kpiPrev').innerHTML      = makeDelta(varMeta);
-    document.getElementById('kpiPrevSub').textContent = promMeta > 0 ? 'Meta: ' + promMeta.toLocaleString('es-MX') : 'Sin meta definida';
+    document.getElementById('kpiPrevSub').textContent = promMeta > 0 ? 'Meta: ' + promMeta.toLocaleString('es-MX') + ' · ' + periodoText : 'Sin meta · ' + periodoText;
 }
 
 function updateChartTitle(isD1, f, anioBase, groupMode) {
@@ -765,7 +778,7 @@ function render() {
         });
 
         // KPIs
-        updateKPIs(actualMap, prevMap, labels, isD1);
+        updateKPIs(actualMap, prevMap, labels, isD1, f, anioBase);
     }
 
     updateChartTitle(isD1, f, anioBase, groupMode);
@@ -795,19 +808,10 @@ function render() {
                 tooltip: {
                     mode: 'index',
                     intersect: false,
-                    filter: ctx => {
-                        // Mostrar barras y también Año Anterior (sombra)
-                        if (ctx.dataset.type === 'bar') return ctx.raw > 0;
-                        if (ctx.dataset.label === 'Año Anterior') return ctx.raw > 0;
-                        if (ctx.dataset.label === 'Meta') return ctx.raw > 0;
-                        return false;
-                    },
+                    filter: ctx => ctx.dataset.label === 'Año Anterior' && ctx.raw > 0,
                     callbacks: {
-                        label: ctx => {
-                            if (ctx.dataset.label === 'Año Anterior') return ' ▓ Año Anterior: ' + ctx.raw;
-                            if (ctx.dataset.label === 'Meta') return ' ─ Meta: ' + ctx.raw;
-                            return ' ' + ctx.dataset.label + ': ' + ctx.raw;
-                        }
+                        title: () => 'Año Anterior',
+                        label: ctx => ' ' + ctx.raw
                     }
                 }
             }
@@ -874,36 +878,40 @@ function buildTabla(labels, datasets) {
         return `rgba(${r},${g},${b},${alpha})`;
     };
 
+    // Filas de categorías (barras)
     let filas = barDS.map(ds => {
         const bg  = ds.backgroundColor || '#ccc';
-        const tx  = (COLORS[ds.label] || {tx:'#333'}).tx;
         const bgLight = bg.startsWith('#') ? hexToRgba(bg, 0.20) : bg;
-        const txDark  = '#333';
         return '<tr><td>' + ds.label + '</td>' +
             labels.map((l,i) => {
                 const v = ds.data[i]||0;
-                return '<td style="background:' + bgLight + ';color:' + txDark + ';font-weight:700;">' + (v>0?v:'') + '</td>';
+                return '<td style="background:' + bgLight + ';color:#333;font-weight:700;">' + (v>0?v:'') + '</td>';
             }).join('') + '</tr>';
     }).join('');
 
-    if (metaDS) filas += '<tr><td style="color:#0071C1;">META</td>' +
+    // TOTAL justo después de las barras
+    const totalRow = '<tr style="border-top:2px solid #333F48;"><td style="background:#333F48;color:#fff;font-weight:800;">TOTAL</td>' +
+        labels.map((l,i) => {
+            const s=barDS.reduce((a,ds)=>a+(ds.data[i]||0),0);
+            return '<td style="font-weight:800;">'+(s>0?s:'')+'</td>';
+        }).join('') + '</tr>';
+
+    // META después de TOTAL
+    const metaRow = metaDS ? '<tr><td style="color:#0071C1;font-weight:700;">META</td>' +
         labels.map((l,i) => {
             const v=metaDS.data[i];
             return '<td style="color:#0071C1;font-weight:700;">'+(v!=null&&v>0?v:'')+'</td>';
-        }).join('') + '</tr>';
+        }).join('') + '</tr>' : '';
 
-    if (prevDS) filas += '<tr><td style="color:#888;font-style:italic;">AÑO ANTERIOR</td>' +
+    // AÑO ANTERIOR al final
+    const prevRow = prevDS ? '<tr><td style="color:#888;font-style:italic;">AÑO ANTERIOR</td>' +
         labels.map((l,i) => {
             const v=prevDS.data[i]||0;
             return '<td style="color:#888;">'+(colConDatos[i]&&v>0?v:'')+'</td>';
-        }).join('') + '</tr>';
+        }).join('') + '</tr>' : '';
 
-    tbody.innerHTML = filas;
-    tfoot.innerHTML = '<tr><td>TOTAL</td>' +
-        labels.map((l,i) => {
-            const s=barDS.reduce((a,ds)=>a+(ds.data[i]||0),0);
-            return '<td>'+(s>0?s:'')+'</td>';
-        }).join('') + '</tr>';
+    tbody.innerHTML = filas + totalRow + metaRow + prevRow;
+    tfoot.innerHTML = '';
 }
 
 function descargarCSV() {
