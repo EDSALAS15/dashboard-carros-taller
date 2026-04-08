@@ -530,7 +530,7 @@ function makeDelta(pct) {
     return `<span class="kpi-delta ${cls}">${arrow} ${Math.abs(pct).toFixed(1)}%</span>`;
 }
 
-function updateKPIs(actualMap, prevMap, labels, isD1, f, anioBase) {
+function updateKPIs(actualMap, prevMap, labels, isD1) {
     const kpiRow    = document.getElementById('kpiRow');
     const chartTitle = document.getElementById('chartTitle');
     if (!kpiRow) return;
@@ -565,36 +565,23 @@ function updateKPIs(actualMap, prevMap, labels, isD1, f, anioBase) {
     const promPrev = countPrev > 0 ? Math.round(sumPrev / countPrev) : 0;
     const varPct   = promPrev > 0 ? ((promActual - promPrev) / promPrev) * 100 : 0;
 
-    // Texto del periodo para los subs
-    let periodoText;
-    if (isD1) {
-        periodoText = (f.sd && f.ed) ? f.sd + ' → ' + f.ed : 'Año ' + anioBase;
-    } else {
-        const añosSel = f.AÑO.length > 0 ? f.AÑO.join(', ') : String(anioBase);
-        const mesesSel = f.MES.length > 0 ? ' · ' + f.MES.join(', ') : '';
-        periodoText = 'Año ' + añosSel + mesesSel;
-    }
-    const periodoAnterior = isD1
-        ? ((f.sd && f.ed) ? (new Date(f.sd).getFullYear()-1) + ' mismo período' : 'Año ' + (anioBase-1))
-        : 'Año ' + (anioBase-1) + ' mismo período';
-
     // Tarjeta 1: Promedio del periodo actual
     document.getElementById('kpiAcum').textContent    = promActual.toLocaleString('es-MX');
-    document.getElementById('kpiAcumSub').textContent = periodoText;
+    document.getElementById('kpiAcumSub').textContent = isD1 ? 'Promedio diario del período' : 'Promedio del período seleccionado';
 
     // Tarjeta 2: Variación vs año anterior
     document.getElementById('kpiVar').innerHTML       = makeDelta(varPct);
-    document.getElementById('kpiVarSub').textContent  = periodoText + ' vs ' + periodoAnterior;
+    document.getElementById('kpiVarSub').textContent  = 'vs año anterior mismo período';
 
     // Tarjeta 3: Promedio año anterior del mismo periodo
     document.getElementById('kpiMes').textContent     = promPrev.toLocaleString('es-MX');
-    document.getElementById('kpiMesSub').textContent  = periodoAnterior;
+    document.getElementById('kpiMesSub').textContent  = isD1 ? 'Promedio diario año anterior' : 'Año anterior mismo período';
 
     // Tarjeta 4 y 5: Máximo y Mínimo
     document.getElementById('kpiBest').textContent    = maxVal.toLocaleString('es-MX');
-    document.getElementById('kpiBestSub').textContent = 'Máximo · ' + periodoText;
+    document.getElementById('kpiBestSub').textContent = 'Máximo del período';
     document.getElementById('kpiMin').textContent     = minVal.toLocaleString('es-MX');
-    document.getElementById('kpiMinSub').textContent  = 'Mínimo · ' + periodoText;
+    document.getElementById('kpiMinSub').textContent  = 'Mínimo del período';
 
     // Tarjeta 6: Variación vs Meta (promedio meta del periodo)
     let metaSum = 0, metaCount = 0;
@@ -605,7 +592,7 @@ function updateKPIs(actualMap, prevMap, labels, isD1, f, anioBase) {
     const promMeta = metaCount > 0 ? Math.round(metaSum / metaCount) : 0;
     const varMeta  = promMeta > 0 ? ((promActual - promMeta) / promMeta) * 100 : 0;
     document.getElementById('kpiPrev').innerHTML      = makeDelta(varMeta);
-    document.getElementById('kpiPrevSub').textContent = promMeta > 0 ? 'Meta: ' + promMeta.toLocaleString('es-MX') + ' · ' + periodoText : 'Sin meta · ' + periodoText;
+    document.getElementById('kpiPrevSub').textContent = promMeta > 0 ? 'Meta: ' + promMeta.toLocaleString('es-MX') : 'Sin meta definida';
 }
 
 function updateChartTitle(isD1, f, anioBase, groupMode) {
@@ -778,7 +765,7 @@ function render() {
         });
 
         // KPIs
-        updateKPIs(actualMap, prevMap, labels, isD1, f, anioBase);
+        updateKPIs(actualMap, prevMap, labels, isD1);
     }
 
     updateChartTitle(isD1, f, anioBase, groupMode);
