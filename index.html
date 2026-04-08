@@ -842,6 +842,8 @@ function render() {
             }
         }]
     });
+
+    buildTabla(labels, datasets);
 }
 
 
@@ -912,9 +914,8 @@ function descargarCSV() {
     a.href = URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8;'}));
     a.download = (document.getElementById('tblTitulo').textContent||'datos').replace(/[^a-z0-9]/gi,'_')+'.csv';
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
-
-    buildTabla(labels, datasets);
 }
+
 function changeDash(n) {
     currentDash = n;
     document.getElementById('t1').className = 'tab-btn' + (n==1?' active':'');
