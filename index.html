@@ -173,7 +173,7 @@ input[type="date"]{padding:1px 3px;border-radius:3px;border:1px solid #ccc;font-
 // CATS: col = nombre exacto de columna en el Excel, label = nombre visible en gráfica/tabla
 const CATS = [
   {col:'0',     label:'0',      bg:'#90EE90', tx:'#333'},
-  {col:'0-5',   label:'1-5',    bg:'#00B050', tx:'#fff'},  // col=nombre en Excel, label=nombre visual
+  {col:'1-5',   label:'1-5',    bg:'#00B050', tx:'#fff'},
   {col:'6-30',  label:'6-30',   bg:'#00B0F0', tx:'#fff'},
   {col:'31-60', label:'31-60',  bg:'#FFFF00', tx:'#000'},
   {col:'61-100',label:'61-100', bg:'#FFC000', tx:'#fff'},
@@ -184,11 +184,20 @@ const COLORS = Object.fromEntries(CATS.map(c=>([c.label,{bg:c.bg,tx:c.tx}])));
 // Función para leer valor de una categoría del registro del Excel
 // Intenta el col exacto, luego busca por coincidencia parcial si no encuentra
 function getVal(d, cat) {
-  // Intento directo
+  // 1. Intento directo con col exacto
   if(d[cat.col] !== undefined) return Number(d[cat.col]||0);
-  // Buscar clave que contenga el col (para variaciones de formato)
-  const key = Object.keys(d).find(k => k===cat.col || k.replace(/\s/g,'')===cat.col.replace(/\s/g,''));
-  return key ? Number(d[key]||0) : 0;
+  // 2. Buscar ignorando espacios
+  const colClean = cat.col.replace(/\s/g,'');
+  const key = Object.keys(d).find(k => k.replace(/\s/g,'') === colClean);
+  if(key) return Number(d[key]||0);
+  // 3. Si el label es diferente al col, intentar también con el label
+  if(cat.label !== cat.col) {
+    if(d[cat.label] !== undefined) return Number(d[cat.label]||0);
+    const labelClean = cat.label.replace(/\s/g,'');
+    const key2 = Object.keys(d).find(k => k.replace(/\s/g,'') === labelClean);
+    if(key2) return Number(d[key2]||0);
+  }
+  return 0;
 }
 const MESES = ['ENERO','FEBRERO','MARZO','ABRIL','MAYO','JUNIO','JULIO','AGOSTO','SEPTIEMBRE','OCTUBRE','NOVIEMBRE','DICIEMBRE'];
 const FIELDS = ['AÑO','MES','SEMANA','ZONA','DIVISION','TIPO'];
@@ -417,7 +426,8 @@ function render() {
       const nd=pm[mes];
       const fr=new Date(d.FECHA); if(!isNaN(fr)) nd.dias.add(fr.toISOString().split('T')[0]);
       nd.mSum+=Number(d[colMeta]||0); nd.mCnt++;
-      CATS.forEach(c=>{const v=getVal(d,c);nd[c.label]+=v;nd.total+=v;});
+      CATS.forEach(c=>{const v=getVal(d,c);nd[c.label]+=v;});
+        nd.total=CATS.reduce((s,c)=>s+nd[c.label],0);
     });
     const ms=Object.values(pm); if(!ms.length){const e={total:0,meta:0};CATS.forEach(c=>e[c.label]=0);return e;}
     const s={total:0,meta:0}; CATS.forEach(c=>s[c.label]=0); let mc=0;
@@ -457,7 +467,8 @@ function render() {
       const nd=mapa[key];
       const fr=new Date(d.FECHA); if(!isNaN(fr)) nd.diasUnicos.add(fr.toISOString().split('T')[0]);
       nd.metaSum+=Number(d[colMeta]||0); nd.metaCount++;
-      CATS.forEach(c=>{ const v=getVal(d,c); nd[c.label]+=v; nd.total+=v; });
+      CATS.forEach(c=>{ const v=getVal(d,c); nd[c.label]+=v; });
+      nd.total = CATS.reduce((s,c)=>s+nd[c.label],0); // total siempre calculado, nunca del Excel
     });
     return mapa;
   }
