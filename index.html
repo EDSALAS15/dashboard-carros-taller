@@ -205,6 +205,7 @@ const EXCEL_URL = 'historialdiariocarrostaller.xlsx';
 
 // ── Estado global ────────────────────────────────────────────────────
 let rawData = [], myChart = null, currentDash = 1, groupMode = 'MES', renderTimer = null;
+let hiddenCats = new Set(['0']); // categorías ocultas en leyenda (persiste entre renders)
 let filtersD1 = {AÑO:[],MES:[],SEMANA:[],ZONA:[],DIVISION:[],TIPO:[],sd:'',ed:''};
 let filtersD2 = {AÑO:[],MES:[],SEMANA:[],ZONA:[],DIVISION:[],TIPO:[],sd:'',ed:''};
 
@@ -457,7 +458,9 @@ function render() {
     rawData.forEach(d=>{
       if(Number(d.AÑO)!==anio) return;
       if(isD1){ const ts=new Date(d.FECHA).getTime(); if(ts<sdTs||ts>edTs) return; }
-      else{ if(mesSel.size>0&&!mesSel.has(String(d.MES))) return; if(semSel.size>0&&!semSel.has(String(d.SEMANA))) return; }
+      // MES y SEMANA aplican en ambos dashboards
+      if(mesSel.size>0&&!mesSel.has(String(d.MES))) return;
+      if(semSel.size>0&&!semSel.has(String(d.SEMANA))) return;
       if(!ok(d)) return;
       let key;
       if(isD1){ const dt=new Date(d.FECHA); if(isPrev) dt.setFullYear(dt.getFullYear()+1); key=dt.toLocaleDateString(); }
@@ -497,7 +500,7 @@ function render() {
   if(modoAnio) {
     const metaVals=labels.map(l=>{const d=datosAnio[Number(l)];return d&&d.meta>0?d.meta:null;});
     if(metaVals.some(v=>v!==null)) datasets.push({label:'Meta',type:'line',data:metaVals,borderColor:'#0071C1',borderWidth:3,pointRadius:5,pointBackgroundColor:'#0071C1',fill:false,order:0,spanGaps:false});
-    CATS.forEach(c=>datasets.push({label:c.label,type:'bar',data:labels.map(l=>{const d=datosAnio[Number(l)];return d?d[c.label]:0;}),backgroundColor:c.bg,stack:'s1',order:1,maxBarThickness:80}));
+    CATS.forEach(c=>datasets.push({label:c.label,type:'bar',data:labels.map(l=>{const d=datosAnio[Number(l)];return d?d[c.label]:0;}),backgroundColor:c.bg,stack:'s1',order:1,maxBarThickness:80,hidden:hiddenCats.has(c.label)}));
     aniosG.forEach(a=>{const d=datosAnio[a];if(d&&d.total>yMax) yMax=d.total;});
     const mxM=metaVals.filter(v=>v!==null);if(mxM.length) yMax=Math.max(yMax,...mxM);
   } else {
@@ -521,7 +524,7 @@ function render() {
       floats.map((v,i)=>({i,r:v-floors[i]})).sort((a,b)=>b.r-a.r).forEach(({i})=>{if(res>0){floors[i]++;res--;}});
       CATS.forEach((c,ci)=>barData[c.label].push(floors[ci]));
     });
-    CATS.forEach(c=>datasets.push({label:c.label,type:'bar',data:barData[c.label],backgroundColor:c.bg,stack:'s1',order:1}));
+    CATS.forEach(c=>datasets.push({label:c.label,type:'bar',data:barData[c.label],backgroundColor:c.bg,stack:'s1',order:1,hidden:hiddenCats.has(c.label)}));
     // yMax
     labels.forEach(l=>{
       const a=actualMap[l];if(a){const v=isD1?a.total:Math.round(a.total/(a.diasUnicos.size||1));if(v>yMax) yMax=v;}
@@ -531,7 +534,17 @@ function render() {
   const yAxisMax=Math.ceil(yMax*1.15)||10;
 
   // Gráfica
-  if(myChart){myChart.destroy();myChart=null;}
+  // Preservar estado de categorías ocultas antes de destruir el chart
+  if(myChart){
+    myChart.data.datasets.forEach((ds,di)=>{
+      if(ds.type==='bar'){
+        const meta=myChart.getDatasetMeta(di);
+        if(meta.hidden) hiddenCats.add(ds.label);
+        else hiddenCats.delete(ds.label);
+      }
+    });
+    myChart.destroy(); myChart=null;
+  }
   const cont=document.querySelector('.chart-container');
   const oldC=$('myChart');if(oldC) oldC.remove();
   const cv=document.createElement('canvas');cv.id='myChart';cont.appendChild(cv);
@@ -546,7 +559,16 @@ function render() {
         ySombra:{display:false,stacked:false,beginAtZero:true,min:0,max:yAxisMax}
       },
       plugins:{
-        legend:{position:'bottom',labels:{filter:i=>i.text!=='Año Anterior'}},
+        legend:{position:'bottom',labels:{filter:i=>i.text!=='Año Anterior'},
+          onClick:(e,legendItem,legend)=>{
+            const idx=legendItem.datasetIndex;
+            const meta=legend.chart.getDatasetMeta(idx);
+            meta.hidden=!meta.hidden;
+            if(meta.hidden) hiddenCats.add(legendItem.text);
+            else hiddenCats.delete(legendItem.text);
+            legend.chart.update();
+          }
+        },
         tooltip:{mode:'index',intersect:false,filter:ctx=>ctx.dataset.label==='Año Anterior'&&ctx.raw>0,callbacks:{title:()=>'Año Anterior',label:ctx=>' '+ctx.raw}}
       }
     },
