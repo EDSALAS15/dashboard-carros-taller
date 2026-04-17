@@ -206,6 +206,7 @@ const EXCEL_URL = 'historialdiariocarrostaller.xlsx';
 // ── Estado global ────────────────────────────────────────────────────
 let rawData = [], myChart = null, currentDash = 1, groupMode = 'MES', renderTimer = null;
 let hiddenCats = new Set(['0']); // categorías ocultas en leyenda (persiste entre renders)
+let lastRenderState = null; // guarda el estado del último render para recalcular KPIs
 let filtersD1 = {AÑO:[],MES:[],SEMANA:[],ZONA:[],DIVISION:[],TIPO:[],sd:'',ed:''};
 let filtersD2 = {AÑO:[],MES:[],SEMANA:[],ZONA:[],DIVISION:[],TIPO:[],sd:'',ed:''};
 
@@ -338,6 +339,13 @@ function handleFilterChange(field) {
 }
 
 // ── KPIs ─────────────────────────────────────────────────────────────
+// Calcula el total de un nodo del mapa considerando solo cats visibles
+function totalVisible(nd, n, isD1) {
+  const suma = CATS.filter(c=>!hiddenCats.has(c.label))
+                   .reduce((s,c)=>s+(nd[c.label]||0), 0);
+  return isD1 ? suma : Math.round(suma / (n||1));
+}
+
 function updateKPIs(actualMap, prevMap, labels, isD1, f, anioBase) {
   const kpiRow=$('kpiRow'), ct=$('chartTitle');
   if(!kpiRow) return;
@@ -347,7 +355,7 @@ function updateKPIs(actualMap, prevMap, labels, isD1, f, anioBase) {
   labels.forEach(l => {
     const a=actualMap[l]; if(!a) return;
     const n=a.diasUnicos.size||1;
-    const v=isD1?a.total:Math.round(a.total/n);
+    const v=totalVisible(a, n, isD1);
     if(v>0){sumA+=v;cntA++;if(v>maxV){maxV=v;labelMax=l;}if(v<minV){minV=v;labelMin=l;}}
   });
   const promA=cntA>0?Math.round(sumA/cntA):0;
@@ -357,7 +365,7 @@ function updateKPIs(actualMap, prevMap, labels, isD1, f, anioBase) {
   labels.forEach(l => {
     const p=prevMap[l]; if(!p) return;
     const n=p.diasUnicos.size||1;
-    const v=isD1?p.total:Math.round(p.total/n);
+    const v=totalVisible(p, n, isD1);
     if(v>0){sumP+=v;cntP++;}
   });
   const promP=cntP>0?Math.round(sumP/cntP):0;
@@ -527,8 +535,8 @@ function render() {
     CATS.forEach(c=>datasets.push({label:c.label,type:'bar',data:barData[c.label],backgroundColor:c.bg,stack:'s1',order:1,hidden:hiddenCats.has(c.label)}));
     // yMax
     labels.forEach(l=>{
-      const a=actualMap[l];if(a){const v=isD1?a.total:Math.round(a.total/(a.diasUnicos.size||1));if(v>yMax) yMax=v;}
-      const p=prevMap[l];if(p){const v=isD1?p.total:Math.round(p.total/(p.diasUnicos.size||1));if(v>yMax) yMax=v;}
+      const a=actualMap[l];if(a){const n=a.diasUnicos.size||1;const v=totalVisible(a,n,isD1);if(v>yMax) yMax=v;}
+      const p=prevMap[l];if(p){const n=p.diasUnicos.size||1;const v=totalVisible(p,n,isD1);if(v>yMax) yMax=v;}
     });
   }
   const yAxisMax=Math.ceil(yMax*1.15)||10;
@@ -567,6 +575,12 @@ function render() {
             if(meta.hidden) hiddenCats.add(legendItem.text);
             else hiddenCats.delete(legendItem.text);
             legend.chart.update();
+            // Recalcular KPIs con las categorías visibles actualizadas (sin recrear el chart)
+            if(lastRenderState){
+              const {actualMap,prevMap,labels,isD1,f,anioBase}=lastRenderState;
+              if(!lastRenderState.modoAnio) updateKPIs(actualMap,prevMap,labels,isD1,f,anioBase);
+              buildTabla(labels,legend.chart.data.datasets);
+            }
           }
         },
         tooltip:{mode:'index',intersect:false,filter:ctx=>ctx.dataset.label==='Año Anterior'&&ctx.raw>0,callbacks:{title:()=>'Año Anterior',label:ctx=>' '+ctx.raw}}
@@ -595,6 +609,8 @@ function render() {
     }}]
   });
 
+  // Guardar estado para recálculo de KPIs al cambiar leyenda
+  lastRenderState = {actualMap, prevMap, labels, isD1, f:Object.assign({},f), anioBase, modoAnio, datosAnio};
   buildTabla(labels,datasets);
 }
 
