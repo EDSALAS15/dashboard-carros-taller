@@ -205,7 +205,7 @@ const EXCEL_URL = 'historialdiariocarrostaller.xlsx';
 
 // ── Estado global ────────────────────────────────────────────────────
 let rawData = [], myChart = null, currentDash = 1, groupMode = 'MES', renderTimer = null;
-let hiddenCats = new Set(['0']); // categorías ocultas en leyenda (persiste entre renders)
+let hiddenCats = new Set(); // categorías ocultas en leyenda (persiste entre renders)
 let lastRenderState = null; // guarda el estado del último render para recalcular KPIs
 let filtersD1 = {AÑO:[],MES:[],SEMANA:[],ZONA:[],DIVISION:[],TIPO:[],sd:'',ed:''};
 let filtersD2 = {AÑO:[],MES:[],SEMANA:[],ZONA:[],DIVISION:[],TIPO:[],sd:'',ed:''};
