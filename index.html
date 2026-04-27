@@ -612,6 +612,7 @@ function render() {
   // Guardar estado para recálculo de KPIs al cambiar leyenda
   lastRenderState = {actualMap, prevMap, labels, isD1, f:Object.assign({},f), anioBase, modoAnio, datosAnio};
   buildTabla(labels,datasets);
+  if(!isD1) buildTabla2(f, anioBase);
 }
 
 // ── Tabla ─────────────────────────────────────────────────────────────
@@ -635,6 +636,129 @@ function buildTabla(labels, datasets) {
   if(prevDS) rows+='<tr><td style="color:#888;font-style:italic;">AÑO ANTERIOR</td>'+labels.map((_,i)=>{const v=prevDS.data[i]||0;return '<td style="color:#888;">'+( colOK[i]&&v>0?v:'')+'</td>';}).join('')+'</tr>';
   $('tblBody').innerHTML=rows;
   $('tblFoot').innerHTML='';
+}
+
+// ── Segunda tabla: desglose Categoría / Zona / División por Mes ──────
+const ESTRUCTURA = {
+  LOCAL: {
+    'A+E':    ['A','E'],
+    'B+G':    ['B','G'],
+    'H':      ['H'],
+    'C+D+J':  ['C','D','J']
+  },
+  FORANEA: {
+    'JUAREZ':       ['JUAREZ'],
+    'NUEVO LAREDO': ['NUEVO LAREDO'],
+    'REYNOSA':      ['REYNOSA'],
+    'SAN LUIS POTOSI': ['SAN LUIS POTOSI'],
+    'VICTORIA':     ['VICTORIA']
+  }
+};
+
+function buildTabla2(f, anioBase) {
+  const wrap = $('tbl2-wrap');
+  if(!wrap || currentDash !== 2) { if(wrap) wrap.style.display='none'; return; }
+  wrap.style.display = 'block';
+
+  // Obtener meses a mostrar (filtro MES activo o todos)
+  const mesesMostrar = f.MES.length > 0 ? f.MES : [...MESES];
+
+  // Cabecera: fila 1 = años seleccionados agrupando meses, fila 2 = meses
+  const añosSel = f.AÑO.length > 0 ? f.AÑO : [...new Set(rawData.map(d=>String(d.AÑO)).filter(Boolean))].sort();
+
+  // Construir columnas: [{año, mes}]
+  const cols = [];
+  añosSel.forEach(a => mesesMostrar.forEach(m => cols.push({año:String(a), mes:m})));
+
+  // Head fila 1: "Nivel" + un th por año abarcando sus meses
+  let head1 = '<tr><th rowspan="2" style="min-width:110px;text-align:left;position:sticky;left:0;z-index:4;background:#263038;">Nivel</th>';
+  añosSel.forEach(a => {
+    head1 += `<th colspan="${mesesMostrar.length}" style="border-left:2px solid #4a5a68;">${a}</th>`;
+  });
+  head1 += '</tr>';
+
+  // Head fila 2: meses abreviados
+  const mesAbrev = {ENERO:'Ene',FEBRERO:'Feb',MARZO:'Mar',ABRIL:'Abr',MAYO:'May',JUNIO:'Jun',
+    JULIO:'Jul',AGOSTO:'Ago',SEPTIEMBRE:'Sep',OCTUBRE:'Oct',NOVIEMBRE:'Nov',DICIEMBRE:'Dic'};
+  let head2 = '<tr>';
+  añosSel.forEach(() => {
+    mesesMostrar.forEach(m => head2 += `<th style="border-left:1px solid #4a5a68;">${mesAbrev[m]||m}</th>`);
+  });
+  head2 += '</tr>';
+  $('tbl2Head').innerHTML = head1 + head2;
+
+  // Función: calcular promedio diario de una categoría para un conjunto de registros de un mes/año
+  const calcProm = (registros, cat) => {
+    let suma = 0, dias = new Set();
+    registros.forEach(d => {
+      suma += getVal(d, cat);
+      const fr = new Date(d.FECHA); if(!isNaN(fr)) dias.add(fr.toISOString().split('T')[0]);
+    });
+    if(!dias.size) return null;
+    return suma / dias.size;
+  };
+
+  // Índice de datos: filtrar rawData por filtros activos (excepto ZONA/DIVISION que los controlamos aquí)
+  const baseData = rawData.filter(d => {
+    if(f.TIPO.length > 0 && !f.TIPO.includes(String(d.TIPO))) return false;
+    if(f.SEMANA.length > 0 && !f.SEMANA.includes(String(d.SEMANA))) return false;
+    return true;
+  });
+
+  // Construir filas
+  let rows = '';
+
+  CATS.forEach(cat => {
+    const catBg = cat.bg;
+    const catTx = cat.tx;
+
+    // Fila de categoría (encabezado de grupo)
+    rows += `<tr>
+      <td class="t2-cat" style="background:${catBg};color:${catTx};">${cat.label}</td>
+      ${cols.map(()=>'<td style="background:'+catBg+'20;"></td>').join('')}
+    </tr>`;
+
+    // Zonas
+    Object.entries(ESTRUCTURA).forEach(([zona, divisiones]) => {
+      rows += `<tr>
+        <td class="t2-zona">${zona}</td>
+        ${cols.map(c => {
+          const regs = baseData.filter(d => String(d.ZONA).toUpperCase()===zona && String(d.AÑO)===c.año && String(d.MES)===c.mes);
+          const v = calcProm(regs, cat);
+          return `<td style="font-weight:600;">${v !== null ? v.toFixed(1) : ''}</td>`;
+        }).join('')}
+      </tr>`;
+
+      // Divisiones agrupadas
+      Object.entries(divisiones).forEach(([divLabel, divArr]) => {
+        rows += `<tr>
+          <td class="t2-div">${divLabel}</td>
+          ${cols.map(c => {
+            const regs = baseData.filter(d =>
+              String(d.ZONA).toUpperCase()===zona &&
+              divArr.some(dv => String(d.DIVISION).toUpperCase().trim()===dv.toUpperCase()) &&
+              String(d.AÑO)===c.año && String(d.MES)===c.mes
+            );
+            const v = calcProm(regs, cat);
+            return `<td>${v !== null ? v.toFixed(1) : ''}</td>`;
+          }).join('')}
+        </tr>`;
+      });
+    });
+  });
+
+  $('tbl2Body').innerHTML = rows;
+}
+
+function descargarCSV2() {
+  const tbl = $('tbl2'); if(!tbl) return;
+  const csv = '﻿' + [...tbl.querySelectorAll('tr')]
+    .map(r => [...r.querySelectorAll('th,td')].map(c => '"'+c.textContent.trim().replace(/"/g,'""')+'"').join(',')).join('
+');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8;'}));
+  a.download = 'Promedio_Desglose.csv';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
 }
 
 function descargarCSV() {
