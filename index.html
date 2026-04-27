@@ -160,6 +160,21 @@ input[type="date"]{padding:1px 3px;border-radius:3px;border:1px solid #ccc;font-
           <table id="tbl"><thead id="tblHead"></thead><tbody id="tblBody"></tbody><tfoot id="tblFoot"></tfoot></table>
         </div>
       </div>
+
+      <!-- Segunda tabla: desglose Categoría / Zona / División por Mes (solo D2) -->
+      <div id="tbl2-wrap" style="display:none;margin-top:20px;border-radius:8px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.1);">
+        <div class="tabla-toolbar" style="background:#263038;">
+          <span>Promedio por Categoría &middot; Zona &middot; División &mdash; por Mes</span>
+          <button class="btn-dl" onclick="descargarCSV2()">&#11015; Descargar Excel</button>
+        </div>
+        <div class="tbl2-scroll">
+          <table id="tbl2">
+            <thead id="tbl2Head"></thead>
+            <tbody id="tbl2Body"></tbody>
+          </table>
+        </div>
+      </div>
+
     </div>
   </div></div>
 </div>
