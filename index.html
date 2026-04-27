@@ -742,26 +742,39 @@ function buildTabla2(f, anioBase) {
       cols.map(() => '<td style="background:'+bgLight+';"></td>').join('') + '</tr>';
 
     Object.entries(ESTRUCTURA).forEach(([zona, divisiones]) => {
-      // Fila zona — promedio de todos los registros de esa zona
-      rows += '<tr><td class="t2-zona">'+zona+'</td>' +
-        cols.map(c => {
-          const regs = (idx[c.mes]||[]).filter(d => normStr(d.ZONA) === zona);
-          const v = calcProm(regs, cat);
-          return '<td style="font-weight:700;color:#333F48;">' + (v!==null ? v.toFixed(1) : '') + '</td>';
-        }).join('') + '</tr>';
-
-      // Filas de divisiones agrupadas
+      // Pre-calcular valores de cada división para que zona = suma de divisiones
+      // Así los números siempre cuadran al exportar a Excel
+      const divVals = {}; // divLabel → [valor por columna]
       Object.entries(divisiones).forEach(([divLabel, divArr]) => {
         const divNorm = divArr.map(d => d.toUpperCase().trim());
+        divVals[divLabel] = cols.map(c => {
+          const regs = (idx[c.mes]||[]).filter(d =>
+            normStr(d.ZONA) === zona &&
+            divNorm.includes(normStr(d.DIVISION))
+          );
+          return calcProm(regs, cat); // suma_real / dias_reales de esa agrupación
+        });
+      });
+
+      // Zona = suma de los valores de sus divisiones (para que cuadre al exportar)
+      const zonaVals = cols.map((c, ci) => {
+        // Sumar vehículos reales de toda la zona y dividir entre días únicos reales
+        const regs = (idx[c.mes]||[]).filter(d => normStr(d.ZONA) === zona);
+        return calcProm(regs, cat);
+      });
+
+      // Fila zona
+      rows += '<tr><td class="t2-zona">'+zona+'</td>' +
+        zonaVals.map(v =>
+          '<td style="font-weight:700;color:#333F48;">' + (v!==null ? v.toFixed(1) : '') + '</td>'
+        ).join('') + '</tr>';
+
+      // Filas de divisiones
+      Object.entries(divVals).forEach(([divLabel, vals]) => {
         rows += '<tr><td class="t2-div">'+divLabel+'</td>' +
-          cols.map(c => {
-            const regs = (idx[c.mes]||[]).filter(d =>
-              normStr(d.ZONA) === zona &&
-              divNorm.includes(normStr(d.DIVISION))
-            );
-            const v = calcProm(regs, cat);
-            return '<td style="color:#555;">' + (v!==null ? v.toFixed(1) : '') + '</td>';
-          }).join('') + '</tr>';
+          vals.map(v =>
+            '<td style="color:#555;">' + (v!==null ? v.toFixed(1) : '') + '</td>'
+          ).join('') + '</tr>';
       });
     });
   });
