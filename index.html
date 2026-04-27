@@ -78,6 +78,18 @@ input[type="date"]{padding:1px 3px;border-radius:3px;border:1px solid #ccc;font-
 #tbl tbody td:first-child{text-align:left;font-weight:700;background:#f4f6f8;position:sticky;left:0}
 #tbl tbody tr:hover td{background:#edf3ff}
 #tbl tbody tr:hover td:first-child{background:#dce6f0}
+/* ── Segunda tabla desglose — gemela de tabla1 ── */
+.tbl2-scroll{overflow-x:auto;max-height:520px;overflow-y:auto}
+#tbl2{width:100%;border-collapse:collapse;font-size:11px;font-family:'Segoe UI',sans-serif}
+#tbl2 thead th{background:#333F48;color:#fff;padding:6px 10px;text-align:center;white-space:nowrap;font-size:10px;font-weight:700;position:sticky;top:0;z-index:2;border-right:1px solid #4a5a68}
+#tbl2 thead th:first-child{text-align:left;min-width:120px}
+#tbl2 tbody td{padding:5px 10px;border-bottom:1px solid #eee;border-right:1px solid #eee;text-align:center;white-space:nowrap;font-size:11px}
+#tbl2 tbody td:first-child{text-align:left;position:sticky;left:0;z-index:1}
+#tbl2 tbody tr:hover td{background:#edf3ff}
+#tbl2 tbody tr:hover td:first-child{background:#dce6f0}
+#tbl2 td.t2-cat{font-weight:800;padding-left:8px;background:#f4f6f8}
+#tbl2 td.t2-zona{font-weight:700;padding-left:18px;background:#f4f6f8;color:#333F48;font-size:10px}
+#tbl2 td.t2-div{font-weight:400;padding-left:30px;background:#f9f9f9;color:#555;font-size:10px;border-right:2px solid #ddd}
 </style>
 </head>
 <body>
@@ -163,7 +175,7 @@ input[type="date"]{padding:1px 3px;border-radius:3px;border:1px solid #ccc;font-
 
       <!-- Segunda tabla: desglose Categoría / Zona / División por Mes (solo D2) -->
       <div id="tbl2-wrap" style="display:none;margin-top:20px;border-radius:8px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.1);">
-        <div class="tabla-toolbar" style="background:#263038;">
+        <div class="tabla-toolbar">
           <span>Promedio por Categoría &middot; Zona &middot; División &mdash; por Mes</span>
           <button class="btn-dl" onclick="descargarCSV2()">&#11015; Descargar Excel</button>
         </div>
@@ -725,8 +737,9 @@ function buildTabla2(f, anioBase) {
 
   CATS.forEach(cat => {
     // Fila categoría
+    const bgLight = hexRgba(cat.bg, 0.20);
     rows += '<tr><td class="t2-cat" style="background:'+cat.bg+';color:'+cat.tx+';">'+cat.label+'</td>' +
-      cols.map(() => '<td style="background:'+cat.bg+'20;"></td>').join('') + '</tr>';
+      cols.map(() => '<td style="background:'+bgLight+';"></td>').join('') + '</tr>';
 
     Object.entries(ESTRUCTURA).forEach(([zona, divisiones]) => {
       // Fila zona — promedio de todos los registros de esa zona
@@ -734,7 +747,7 @@ function buildTabla2(f, anioBase) {
         cols.map(c => {
           const regs = (idx[c.mes]||[]).filter(d => normStr(d.ZONA) === zona);
           const v = calcProm(regs, cat);
-          return '<td style="font-weight:600;">' + (v!==null ? v.toFixed(1) : '') + '</td>';
+          return '<td style="font-weight:700;color:#333F48;">' + (v!==null ? v.toFixed(1) : '') + '</td>';
         }).join('') + '</tr>';
 
       // Filas de divisiones agrupadas
@@ -747,7 +760,7 @@ function buildTabla2(f, anioBase) {
               divNorm.includes(normStr(d.DIVISION))
             );
             const v = calcProm(regs, cat);
-            return '<td>' + (v!==null ? v.toFixed(1) : '') + '</td>';
+            return '<td style="color:#555;">' + (v!==null ? v.toFixed(1) : '') + '</td>';
           }).join('') + '</tr>';
       });
     });
