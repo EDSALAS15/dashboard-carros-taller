@@ -656,17 +656,17 @@ function buildTabla(labels, datasets) {
 // ── Segunda tabla: desglose Categoría / Zona / División por Mes ──────
 const ESTRUCTURA = {
   LOCAL: {
-    'A+E':    ['A','E'],
-    'B+G':    ['B','G'],
-    'H':      ['H'],
-    'C+D+J':  ['C','D','J']
+    'A+E':   ['A','E'],
+    'B+G':   ['B','G'],
+    'H/F':   ['H/F'],
+    'C+D/J': ['C','D/J']
   },
   FORANEA: {
-    'JUAREZ':       ['JUAREZ'],
-    'NUEVO LAREDO': ['NUEVO LAREDO'],
-    'REYNOSA':      ['REYNOSA'],
-    'SAN LUIS POTOSI': ['SAN LUIS POTOSI'],
-    'VICTORIA':     ['VICTORIA']
+    'JUAREZ':        ['JRZ'],
+    'NUEVO LAREDO':  ['NLDO'],
+    'REYNOSA':       ['REY'],
+    'SAN LUIS POTOSI':['SLP'],
+    'VICTORIA':      ['VIC']
   }
 };
 
@@ -687,7 +687,7 @@ function buildTabla2(f, anioBase) {
     JULIO:'Jul',AGOSTO:'Ago',SEPTIEMBRE:'Sep',OCTUBRE:'Oct',NOVIEMBRE:'Nov',DICIEMBRE:'Dic'};
   $('tbl2Head').innerHTML = '<tr>' +
     '<th style="min-width:115px;text-align:left;position:sticky;left:0;z-index:4;background:#263038;">Nivel</th>' +
-    cols.map(c => '<th>' + (mesAbrev[c.mes]||c.mes) + '</th>').join('') +
+    cols.map(c => '<th style="min-width:70px;padding:6px 10px;">' + (mesAbrev[c.mes]||c.mes) + '</th>').join('') +
     '</tr>';
 
   // Función: promedio diario de una categoría sobre un conjunto de registros
@@ -700,7 +700,7 @@ function buildTabla2(f, anioBase) {
     return dias.size ? suma / dias.size : null;
   };
 
-  // Detectar valores reales de ZONA y DIVISION en el Excel para comparación flexible
+  // Comparación flexible de ZONA y DIVISION
   const normStr = s => String(s||'').toUpperCase().trim();
 
   // Filtrar base igual que la tabla 1 (mismo año, mismos filtros activos excepto zona/div)
