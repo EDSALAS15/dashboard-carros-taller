@@ -675,95 +675,88 @@ function buildTabla2(f, anioBase) {
   if(!wrap || currentDash !== 2) { if(wrap) wrap.style.display='none'; return; }
   wrap.style.display = 'block';
 
-  // Obtener meses a mostrar (filtro MES activo o todos)
+  // Mismo periodo que la tabla de arriba: usar anioBase y meses del filtro activo
+  const añoUsar = String(anioBase);
   const mesesMostrar = f.MES.length > 0 ? f.MES : [...MESES];
 
-  // Cabecera: fila 1 = años seleccionados agrupando meses, fila 2 = meses
-  const añosSel = f.AÑO.length > 0 ? f.AÑO : [...new Set(rawData.map(d=>String(d.AÑO)).filter(Boolean))].sort();
+  // Columnas = solo meses (sin año en cabecera)
+  const cols = mesesMostrar.map(m => ({año: añoUsar, mes: m}));
 
-  // Construir columnas: [{año, mes}]
-  const cols = [];
-  añosSel.forEach(a => mesesMostrar.forEach(m => cols.push({año:String(a), mes:m})));
-
-  // Head fila 1: "Nivel" + un th por año abarcando sus meses
-  let head1 = '<tr><th rowspan="2" style="min-width:110px;text-align:left;position:sticky;left:0;z-index:4;background:#263038;">Nivel</th>';
-  añosSel.forEach(a => {
-    head1 += `<th colspan="${mesesMostrar.length}" style="border-left:2px solid #4a5a68;">${a}</th>`;
-  });
-  head1 += '</tr>';
-
-  // Head fila 2: meses abreviados
+  // Cabecera: una sola fila con los meses abreviados
   const mesAbrev = {ENERO:'Ene',FEBRERO:'Feb',MARZO:'Mar',ABRIL:'Abr',MAYO:'May',JUNIO:'Jun',
     JULIO:'Jul',AGOSTO:'Ago',SEPTIEMBRE:'Sep',OCTUBRE:'Oct',NOVIEMBRE:'Nov',DICIEMBRE:'Dic'};
-  let head2 = '<tr>';
-  añosSel.forEach(() => {
-    mesesMostrar.forEach(m => head2 += `<th style="border-left:1px solid #4a5a68;">${mesAbrev[m]||m}</th>`);
-  });
-  head2 += '</tr>';
-  $('tbl2Head').innerHTML = head1 + head2;
+  $('tbl2Head').innerHTML = '<tr>' +
+    '<th style="min-width:115px;text-align:left;position:sticky;left:0;z-index:4;background:#263038;">Nivel</th>' +
+    cols.map(c => '<th>' + (mesAbrev[c.mes]||c.mes) + '</th>').join('') +
+    '</tr>';
 
-  // Función: calcular promedio diario de una categoría para un conjunto de registros de un mes/año
-  const calcProm = (registros, cat) => {
-    let suma = 0, dias = new Set();
-    registros.forEach(d => {
+  // Función: promedio diario de una categoría sobre un conjunto de registros
+  const calcProm = (regs, cat) => {
+    let suma = 0; const dias = new Set();
+    regs.forEach(d => {
       suma += getVal(d, cat);
       const fr = new Date(d.FECHA); if(!isNaN(fr)) dias.add(fr.toISOString().split('T')[0]);
     });
-    if(!dias.size) return null;
-    return suma / dias.size;
+    return dias.size ? suma / dias.size : null;
   };
 
-  // Índice de datos: filtrar rawData por filtros activos (excepto ZONA/DIVISION que los controlamos aquí)
+  // Detectar valores reales de ZONA y DIVISION en el Excel para comparación flexible
+  const normStr = s => String(s||'').toUpperCase().trim();
+
+  // Filtrar base igual que la tabla 1 (mismo año, mismos filtros activos excepto zona/div)
   const baseData = rawData.filter(d => {
-    if(f.TIPO.length > 0 && !f.TIPO.includes(String(d.TIPO))) return false;
-    if(f.SEMANA.length > 0 && !f.SEMANA.includes(String(d.SEMANA))) return false;
+    if(normStr(d.AÑO) !== añoUsar) return false;
+    if(f.TIPO.length   > 0 && !f.TIPO.includes(String(d.TIPO)))       return false;
+    if(f.SEMANA.length > 0 && !f.SEMANA.includes(String(d.SEMANA)))   return false;
     return true;
+  });
+
+  // Pre-indexar por mes para no filtrar todo rawData en cada celda
+  const idx = {};
+  baseData.forEach(d => {
+    const mes = normStr(d.MES);
+    if(!idx[mes]) idx[mes] = [];
+    idx[mes].push(d);
   });
 
   // Construir filas
   let rows = '';
 
   CATS.forEach(cat => {
-    const catBg = cat.bg;
-    const catTx = cat.tx;
+    // Fila categoría
+    rows += '<tr><td class="t2-cat" style="background:'+cat.bg+';color:'+cat.tx+';">'+cat.label+'</td>' +
+      cols.map(() => '<td style="background:'+cat.bg+'20;"></td>').join('') + '</tr>';
 
-    // Fila de categoría (encabezado de grupo)
-    rows += `<tr>
-      <td class="t2-cat" style="background:${catBg};color:${catTx};">${cat.label}</td>
-      ${cols.map(()=>'<td style="background:'+catBg+'20;"></td>').join('')}
-    </tr>`;
-
-    // Zonas
     Object.entries(ESTRUCTURA).forEach(([zona, divisiones]) => {
-      rows += `<tr>
-        <td class="t2-zona">${zona}</td>
-        ${cols.map(c => {
-          const regs = baseData.filter(d => String(d.ZONA).toUpperCase()===zona && String(d.AÑO)===c.año && String(d.MES)===c.mes);
+      // Fila zona — promedio de todos los registros de esa zona
+      rows += '<tr><td class="t2-zona">'+zona+'</td>' +
+        cols.map(c => {
+          const regs = (idx[c.mes]||[]).filter(d => normStr(d.ZONA) === zona);
           const v = calcProm(regs, cat);
-          return `<td style="font-weight:600;">${v !== null ? v.toFixed(1) : ''}</td>`;
-        }).join('')}
-      </tr>`;
+          return '<td style="font-weight:600;">' + (v!==null ? v.toFixed(1) : '') + '</td>';
+        }).join('') + '</tr>';
 
-      // Divisiones agrupadas
+      // Filas de divisiones agrupadas
       Object.entries(divisiones).forEach(([divLabel, divArr]) => {
-        rows += `<tr>
-          <td class="t2-div">${divLabel}</td>
-          ${cols.map(c => {
-            const regs = baseData.filter(d =>
-              String(d.ZONA).toUpperCase()===zona &&
-              divArr.some(dv => String(d.DIVISION).toUpperCase().trim()===dv.toUpperCase()) &&
-              String(d.AÑO)===c.año && String(d.MES)===c.mes
+        const divNorm = divArr.map(d => d.toUpperCase().trim());
+        rows += '<tr><td class="t2-div">'+divLabel+'</td>' +
+          cols.map(c => {
+            const regs = (idx[c.mes]||[]).filter(d =>
+              normStr(d.ZONA) === zona &&
+              divNorm.includes(normStr(d.DIVISION))
             );
             const v = calcProm(regs, cat);
-            return `<td>${v !== null ? v.toFixed(1) : ''}</td>`;
-          }).join('')}
-        </tr>`;
+            return '<td>' + (v!==null ? v.toFixed(1) : '') + '</td>';
+          }).join('') + '</tr>';
       });
     });
   });
 
   $('tbl2Body').innerHTML = rows;
 }
+
+// ── PLACEHOLDER to match original end of function ─
+
 
 function descargarCSV2() {
   const tbl = $('tbl2'); if(!tbl) return;
