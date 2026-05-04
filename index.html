@@ -640,6 +640,7 @@ function render() {
   lastRenderState = {actualMap, prevMap, labels, isD1, f:Object.assign({},f), anioBase, modoAnio, datosAnio};
   buildTabla(labels,datasets);
   if(!isD1) buildTabla2(f, anioBase);
+  else { const w=$('tbl2-wrap'); if(w) w.style.display='none'; }
 }
 
 // ── Tabla ─────────────────────────────────────────────────────────────
@@ -689,9 +690,18 @@ function buildTabla2(f, anioBase) {
 
   // Mismo periodo que la tabla de arriba: usar anioBase y meses del filtro activo
   const añoUsar = String(anioBase);
-  const mesesMostrar = f.MES.length > 0 ? f.MES : [...MESES];
+  const normStr0 = s => String(s||'').toUpperCase().trim();
 
-  // Columnas = solo meses (sin año en cabecera)
+  // Obtener meses con datos reales para este año (igual que tabla 1)
+  const mesesConDatos = [...new Set(
+    rawData.filter(d => normStr0(d.AÑO) === añoUsar).map(d => normStr0(d.MES))
+  )].filter(Boolean).sort((a,b) => MESES.indexOf(a) - MESES.indexOf(b));
+
+  const mesesMostrar = f.MES.length > 0
+    ? f.MES.filter(m => mesesConDatos.includes(m.toUpperCase().trim()))
+    : mesesConDatos;
+
+  // Columnas = solo meses con datos (sin año en cabecera)
   const cols = mesesMostrar.map(m => ({año: añoUsar, mes: m}));
 
   // Cabecera: una sola fila con los meses abreviados
@@ -713,8 +723,8 @@ function buildTabla2(f, anioBase) {
     return dias.size ? suma / dias.size : null;
   };
 
-  // Comparación flexible de ZONA y DIVISION
-  const normStr = s => String(s||'').toUpperCase().trim();
+  // Comparación flexible de ZONA y DIVISION (reutiliza normStr0)
+  const normStr = normStr0;
 
   // Filtrar base igual que la tabla 1 (mismo año, mismos filtros activos excepto zona/div)
   const baseData = rawData.filter(d => {
